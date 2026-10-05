@@ -1,5 +1,6 @@
 // Session vitals, pure: what the pane shows of the working session beside the plan.
 import type { Vitals } from '../types'
+import { elapsed } from './format'
 
 export const VITALS: Vitals = {
   turnStartedAt: null,
@@ -28,14 +29,6 @@ export const measured = (vitals: Vitals, contextPct: number | null, costUsd: num
 /** The running turn's time at `now`, else the last turn's. */
 export function turnMs(vitals: Vitals, now: number): number {
   return vitals.turnStartedAt === null ? vitals.lastTurnMs : Math.max(0, now - vitals.turnStartedAt)
-}
-
-export function elapsed(ms: number): string {
-  const secs = Math.floor(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  if (secs < 3600) return `${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`
-
-  return `${Math.floor(secs / 3600)}h${Math.floor((secs % 3600) / 60)}m`
 }
 
 export function vitalsLine(vitals: Vitals, now: number): string {

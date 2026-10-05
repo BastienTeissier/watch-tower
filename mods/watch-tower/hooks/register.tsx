@@ -9,10 +9,11 @@ import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-cod
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
 import { MAIN, agentColor, currentAction, describe, ended, icon, isShown, saw, spawned } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
+import { elapsed } from './format'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
-import { VITALS, elapsed, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
+import { VITALS, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
 import {
