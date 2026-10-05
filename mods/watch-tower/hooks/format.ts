@@ -1,7 +1,8 @@
 // Formatters shared by the pane and the band, pure.
 
+/** A duration; negative reads 0s, as the clock tick can trail an event's own time. */
 export function elapsed(ms: number): string {
-  const secs = Math.floor(ms / 1000)
+  const secs = Math.max(0, Math.floor(ms / 1000))
   if (secs < 60) return `${secs}s`
   if (secs < 3600) return `${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`
 

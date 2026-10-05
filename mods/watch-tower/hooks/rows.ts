@@ -96,7 +96,7 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
   const rate = hitRate(session.usage)
   const line = (key: string, text: string): Row => ({ key, indent: 0, spans: [{ text, isDim: true }] })
   const rows = [
-    line('session', joined([`Σ session  ${elapsed(Math.max(0, now - ledger.startedAt))}`, plural(session.agents, 'agent'), plural(session.tools, 'tool')], '  ')),
+    line('session', joined([`Σ session  ${elapsed(now - ledger.startedAt)}`, plural(session.agents, 'agent'), plural(session.tools, 'tool')], '  ')),
     line('session:spent', joined([`           ${spent(session.usage)}`, rate === null ? null : `cache ${rate}%`, cost(sessionCents(ledger))], '  ')),
   ]
   if (main === undefined) return rows

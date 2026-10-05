@@ -82,6 +82,10 @@ describe('treeRows', () => {
     ])
   })
 
+  test('before the first clock tick, an agent started later reads 0s, never negative', () => {
+    expect(treeRows([mainRun('go', 1, 5_000)], { now: 0, shares: null, expanded: null }).map(text)[0]).toBe('● main | 0s')
+  })
+
   test('no agent, no row', () => {
     expect(treeRows([], { now: 0, shares: null, expanded: null })).toEqual([])
   })
