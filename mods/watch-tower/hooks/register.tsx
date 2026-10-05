@@ -7,7 +7,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
-import { agentColor, describe, ended, icon, isShown, saw, spawned } from './agents'
+import { MAIN, agentColor, currentAction, describe, ended, icon, isShown, saw, spawned } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
@@ -317,13 +317,16 @@ export const register: Register = (on, options) => {
     if (spawn.agentId !== undefined) {
       const run: AgentRun = {
         id: spawn.agentId,
+        parentId: e.parentAgentId ?? MAIN,
         description: e.description || e.subagentType,
         type: e.subagentType,
+        model: spawn.model,
+        prompt: e.prompt,
         status: 'running',
         startedAt: await $.clock.now(),
         endedAt: null,
         tools: 0,
-        last: 'starting',
+        actions: [],
       }
       await update($, agents, list => spawned(list, run))
     }
@@ -482,7 +485,7 @@ export const register: Register = (on, options) => {
         {crew.map(run => (
           <Text wrap="truncate-end">
             <Text color={agentColor(run)}>{`${icon(run)} ${run.description}`}</Text>
-            <Text dimColor>{`  ${elapsed((run.endedAt ?? now) - run.startedAt)} · ${run.tools} tools · ${run.last}`}</Text>
+            <Text dimColor>{`  ${elapsed((run.endedAt ?? now) - run.startedAt)} · ${run.tools} tools · ${currentAction(run)}`}</Text>
           </Text>
         ))}
       </Box>

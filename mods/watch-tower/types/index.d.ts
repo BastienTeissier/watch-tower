@@ -29,16 +29,22 @@ export type Vitals = {
 
 export type AgentStatus = 'running' | 'done' | 'failed'
 
-/** One subagent of the session and what it was last seen doing. */
+/**
+ * One agent of the turn: the main thread (id `main`) or a subagent under its
+ * parent. `actions` holds what it was last seen doing, newest last.
+ */
 export type AgentRun = {
   id: string
+  parentId: string | null
   description: string
   type: string
+  model: string
+  prompt: string
   status: AgentStatus
   startedAt: number
   endedAt: number | null
   tools: number
-  last: string
+  actions: string[]
 }
 
 /** `dirty`: uncommitted paths; `commits`: commits since the plan was attached. */
