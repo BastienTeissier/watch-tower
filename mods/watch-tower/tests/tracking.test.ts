@@ -72,6 +72,14 @@ function engine(on: On, world: World) {
   return mock.clock(on, { now: NOW })
 }
 
+/** One model request of `agentId` (the main thread when absent), read to its end. */
+async function step($: any, model: string, agentId?: string) {
+  const stream = $.turn.step({ turnId: 't', index: 0, model, messageCount: 1, agentId })
+  while (!(await stream.next()).done);
+}
+
+const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
+
 const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
@@ -228,14 +236,49 @@ describe('plan tracking', () => {
     await clock.advance(10_000)
     expect(await ui.find({ type: 'Text', text: /✗ main/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /✗ Explore: child/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: / 1m05s$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: / 1m05s ↑0k ↓0k$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /●/ })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' })
     await $.turn.complete({ turnId: 't2', reason: 'answer', answer: 'ok', usage: null } as any)
     await clock.advance(5_000)
     expect(await ui.find({ type: 'Text', text: /✓ main/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: / 0s$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: / 0s ↑0k ↓0k$/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('requests charge their agent, the engine cost is split into rows that sum to Σ turn', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-haiku-4-5-20251001' }) as any)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    on('session.measure', ($, e) => ({ changed: e.changed }))
+    // The fake API answers each request with the same usage, on the model asked for.
+    on('turn.step', async function* ($, e) {
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: { ...USAGE, model: e.model } } as any
+    })
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    await $.prompt.submit({ text: 'map the models' })
+    await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
+    await step($, 'claude-opus-5-5')
+    await step($, 'claude-haiku-4-5-20251001', 'a1')
+    await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/models.py`, agentId: 'a1' } as any)
+    await $.session.measure({ context: { window: 200_000, percent: 42 }, rateLimits: [], cost: { usd: 1 }, changed: ['cost'] } as any)
+
+    const ui = await $.ui.mount(pane)
+    await clock.advance(500)
+    // Same tokens, priced 0.444 on Opus 5.5 and 0.1155 on Haiku 4.5: 79¢ and 21¢ of the $1.00 spent.
+    expect(await ui.find({ type: 'Text', text: /opus-5\.5 · ↑54k ↓8k · \$0\.79/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /haiku-4\.5 · ↑54k ↓8k · \$0\.21/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Σ turn .* 1 agent  ↑108k ↓16k  \$1\.00/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Σ session .* 1 agent  1 tool/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
+
+    await $.prompt.submit({ text: 'next' })
+    await clock.advance(500)
+    expect(await ui.find({ type: 'Text', text: /Σ turn .* 0 agents  ↑0k ↓0k  \$0\.00/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
     await ui.unmount()
   })
 })

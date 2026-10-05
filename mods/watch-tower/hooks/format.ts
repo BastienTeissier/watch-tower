@@ -15,3 +15,12 @@ export function shortModel(model: string): string {
     .replace(/-\d{8}$/, '')
     .replace(/-(\d+)-(\d+)$/, '-$1.$2')
 }
+
+/** Abbreviated token count: `0k`, `54k`, `1.9M`. */
+export function tokens(n: number): string {
+  const thousands = Math.round(n / 1000)
+
+  return thousands < 1000 ? `${thousands}k` : `${(n / 1_000_000).toFixed(1)}M`
+}
+
+export const usd = (cents: number): string => `$${(cents / 100).toFixed(2)}`

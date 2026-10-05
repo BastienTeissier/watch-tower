@@ -7,14 +7,15 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
-import { MAIN, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
+import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
-import { NO_USAGE } from './ledger'
+import { LEDGER, NO_USAGE, agentCounted, billed, measured as measuredLedger, shares, toolCounted, turnBegan, usageOf } from './ledger'
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
-import { treeRows } from './rows'
+import { weightOf } from './pricing'
+import { totalRows, treeRows } from './rows'
 import { VITALS, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
@@ -36,6 +37,7 @@ const tick = atom({ plugin: 'watch-tower', key: 'tick' } as const, { frame: 0, n
 const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
 const vitals = atom({ plugin: 'watch-tower', key: 'vitals' } as const, VITALS)
 const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as AgentRun[])
+const ledger = atom({ plugin: 'watch-tower', key: 'ledger' } as const, LEDGER)
 const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
 const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
 const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
@@ -229,6 +231,8 @@ export const register: Register = (on, options) => {
       description: 'Show the Watch Tower pane; `plan <path>` attaches a plan, `plan off` detaches it',
     })
     await emit($, { kind: 'session' })
+    const startedAt = await $.clock.now()
+    await update($, ledger, last => (last.startedAt === 0 ? { ...last, startedAt } : last))
     timer?.cancel()
     timer = $.clock.every(FRAME_MS, async () => {
       const now = await $.clock.now()
@@ -272,18 +276,25 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
     await update($, vitals, last => turnStarted(last, now))
-    await update($, agents, list => [mainRun(e.text, 1, now), ...nextTurn(list)])
+    const { turn } = await update($, ledger, turnBegan)
+    await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
     return next(e)
   })
 
-  // One model request: it names the agent's model; the main thread's restarts the cache's clock.
+  // One model request: it names the agent's model and charges its usage; the main thread's restarts the cache's clock.
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
-    const model = result.usage?.model
-    if (model !== undefined) await update($, agents, list => modelSeen(list, e.agentId ?? MAIN, model))
+    if (result.usage !== null) {
+      const { model } = result.usage
+      const usage = usageOf(result.usage)
+      const weight = weightOf(model, usage)
+      const id = e.agentId ?? MAIN
+      await update($, agents, list => charged(modelSeen(list, id, model), id, usage, weight))
+      await update($, ledger, last => billed(last, usage, weight))
+    }
     if (e.agentId === undefined && result.stopReason !== null) {
       const now = await $.clock.now()
       await update($, cache, last => ({ ...last, lastRequestAt: now }))
@@ -298,6 +309,7 @@ export const register: Register = (on, options) => {
 
     await emit($, toolEvent(e))
     await update($, vitals, toolRan)
+    await update($, ledger, toolCounted)
     await update($, agents, list => saw(list, e.agentId ?? MAIN, describe(e as unknown as Record<string, unknown>)))
     const ran = await next(e)
     await emit($, { kind: 'tool-done' })
@@ -322,11 +334,12 @@ export const register: Register = (on, options) => {
         endedAt: null,
         tools: 0,
         actions: [],
-        turn: 1,
+        turn: (await read($, ledger)).turn,
         usage: NO_USAGE,
         weight: 0,
       }
       await update($, agents, list => spawned(list, run))
+      await update($, ledger, agentCounted)
     }
 
     return spawn
@@ -378,6 +391,7 @@ export const register: Register = (on, options) => {
     }
     await update($, gauges, () => ({ five: gauge('five_hour'), week: gauge('seven_day'), sampledAt }))
     await update($, vitals, last => measured(last, e.context.percent ?? null, e.cost?.usd ?? null))
+    await update($, ledger, last => measuredLedger(last, e.context.percent ?? null, e.cost?.usd ?? null))
 
     return next(e)
   })
@@ -412,7 +426,10 @@ export const register: Register = (on, options) => {
     const { frame, now } = await read($, tick)
     const current = await read($, plan)
     const live = await read($, vitals)
-    const crew = treeRows(await read($, agents), now)
+    const team = await read($, agents)
+    const books = await read($, ledger)
+    const cents = shares(team, books)
+    const crew = [...treeRows(team, { now, shares: cents }), ...totalRows(team, books, { now, shares: cents })]
     const repo = await read($, gitState)
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
