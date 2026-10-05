@@ -1,7 +1,7 @@
 // Watch Tower as a mod: wiring only. Session events drive the state machine
 // (machine.ts), a pane draws the active Species in the state's style, the
-// attached plan's position (plan.ts), the session's vitals, its subagents and
-// the prompt cache's countdown. Everything reaching `$` is in this file: the
+// attached plan's position (plan.ts), the agent tree with its tokens and cost
+// (agents.ts, ledger.ts) and the prompt cache's countdown. Everything reaching `$` is in this file: the
 // validator follows `$` into no import.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
@@ -11,12 +11,11 @@ import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTu
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
-import { LEDGER, NO_USAGE, agentCounted, billed, measured as measuredLedger, shares, toolCounted, turnBegan, usageOf } from './ledger'
+import { LEDGER, NO_USAGE, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
 import { totalRows, treeRows } from './rows'
-import { VITALS, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
 import { BODY_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
@@ -35,7 +34,6 @@ const machine = atom({ plugin: 'watch-tower', key: 'machine' } as const, INITIAL
 const gauges = atom({ plugin: 'watch-tower', key: 'gauges' } as const, null)
 const tick = atom({ plugin: 'watch-tower', key: 'tick' } as const, { frame: 0, now: 0 })
 const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
-const vitals = atom({ plugin: 'watch-tower', key: 'vitals' } as const, VITALS)
 const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as AgentRun[])
 const ledger = atom({ plugin: 'watch-tower', key: 'ledger' } as const, LEDGER)
 const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
@@ -275,7 +273,6 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
-    await update($, vitals, last => turnStarted(last, now))
     const { turn } = await update($, ledger, turnBegan)
     await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
@@ -308,7 +305,6 @@ export const register: Register = (on, options) => {
     if (denied !== undefined) return { deny: denied }
 
     await emit($, toolEvent(e))
-    await update($, vitals, toolRan)
     await update($, ledger, toolCounted)
     await update($, agents, list => saw(list, e.agentId ?? MAIN, describe(e as unknown as Record<string, unknown>)))
     const ran = await next(e)
@@ -351,7 +347,6 @@ export const register: Register = (on, options) => {
     if (e.agentId === undefined) {
       await update($, agents, all => ended(all, MAIN, isFailed, now, e.reason))
       await emit($, { kind: 'stop' })
-      await update($, vitals, last => turnEnded(last, now))
       await refresh($)
       if (ttlOverride === null) {
         const ttl = ttlFromTranscript(await readTail($))
@@ -390,8 +385,7 @@ export const register: Register = (on, options) => {
       return { pct: Math.round(limit.percentUsed), resetsAt: Number.isNaN(resetsAt) ? null : resetsAt }
     }
     await update($, gauges, () => ({ five: gauge('five_hour'), week: gauge('seven_day'), sampledAt }))
-    await update($, vitals, last => measured(last, e.context.percent ?? null, e.cost?.usd ?? null))
-    await update($, ledger, last => measuredLedger(last, e.context.percent ?? null, e.cost?.usd ?? null))
+    await update($, ledger, last => measured(last, e.context.percent ?? null, e.cost?.usd ?? null))
 
     return next(e)
   })
@@ -404,14 +398,14 @@ export const register: Register = (on, options) => {
 
     const { Box, Text } = $.ui.resolve(e)
     const at = position(current)
-    const live = await read($, vitals)
+    const { contextPct } = await read($, ledger)
 
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text bold color="#a064dc">{` ${planLabel(at.phase)} ${at.phaseDone}/${at.phaseTotal}`}</Text>
           <Text>{at.current === null ? '  plan complete' : `  ▸ ${at.current.title}`}</Text>
-          {live.contextPct !== null && <Text dimColor>{`  ctx ${live.contextPct}%`}</Text>}
+          {contextPct !== null && <Text dimColor>{`  ctx ${contextPct}%`}</Text>}
         </Text>
         {rest}
       </Box>
@@ -425,7 +419,6 @@ export const register: Register = (on, options) => {
     const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
     const current = await read($, plan)
-    const live = await read($, vitals)
     const team = await read($, agents)
     const books = await read($, ledger)
     const cents = shares(team, books)
@@ -473,10 +466,14 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         {at === null && <Text dimColor>no plan · /{NAME} plan {'<path>'}</Text>}
-        <Text dimColor wrap="truncate-end">{vitalsLine(live, now)}</Text>
-        {warm !== null && (
-          <Text color={warm.color} dimColor={warm.isCold}>
-            {warm.text}
+        {(books.contextPct !== null || warm !== null) && (
+          <Text wrap="truncate-end">
+            {books.contextPct !== null && <Text dimColor>{`ctx ${books.contextPct}%  `}</Text>}
+            {warm !== null && (
+              <Text color={warm.color} dimColor={warm.isCold}>
+                {warm.text}
+              </Text>
+            )}
           </Text>
         )}
         {repo !== null && (

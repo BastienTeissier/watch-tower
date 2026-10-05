@@ -19,14 +19,6 @@ export type Phase = { name: string; tasks: Task[] }
 /** The attached plan; `path` is relative to the working directory, `base` the HEAD it was attached at. */
 export type Plan = { path: string; base: string | null; phases: Phase[] }
 
-export type Vitals = {
-  turnStartedAt: number | null
-  lastTurnMs: number
-  tools: number
-  contextPct: number | null
-  costUsd: number | null
-}
-
 /** Token counts of model requests: fresh input, output, input read from and written to the prompt cache. */
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
@@ -79,7 +71,6 @@ declare module 'claude-code' {
       gauges: Gauges | null
       tick: Tick
       plan: Plan | null
-      vitals: Vitals
       agents: AgentRun[]
       ledger: Ledger
       git: Git | null

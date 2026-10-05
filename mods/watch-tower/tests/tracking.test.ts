@@ -274,6 +274,9 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /Σ turn .* 1 agent  ↑108k ↓16k  \$1\.00/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Σ session .* 1 agent  1 tool/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
+    // The context fill sits with the cache countdown; the old vitals line is gone.
+    expect(await ui.find({ type: 'Text', text: /^ctx 42%  ❄ cache 5:00$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /tools 1|turn \d/ })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' })
     await clock.advance(500)
