@@ -5,7 +5,7 @@ import { elapsed, shortModel, tokens, usd } from './format'
 import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
 import type { Shares } from './ledger'
 import { unplanned } from './plan'
-const DRIFT_COLOR = '#ff8c28'
+import { DRIFT_COLOR } from './style'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 

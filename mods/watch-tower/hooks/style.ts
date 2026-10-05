@@ -21,6 +21,9 @@ const STYLES: Record<number, Style> = {
   [STATE.ALERT]: { name: 'ALERT', shell: '#ff3232', eye: 'X', isEyeCycling: false, isPulsing: true },
 }
 
+/** What left the plan: drift counts and off-plan commits. */
+export const DRIFT_COLOR = '#ff8c28'
+
 const UNKNOWN: Style = { name: 'UNKNOWN', shell: '#ff00ff', eye: '?', isEyeCycling: false, isPulsing: false }
 const EYE_CYCLE = ['.', 'o', 'O']
 

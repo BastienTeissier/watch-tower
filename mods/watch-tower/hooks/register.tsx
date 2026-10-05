@@ -19,7 +19,7 @@ import { weightOf } from './pricing'
 import { commitRows, totalRows, treeRows } from './rows'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
-import { BODY_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
+import { BODY_COLOR, DRIFT_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
 import type { Style } from './style'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
@@ -488,7 +488,7 @@ export const register: Register = (on, options) => {
           </Text>
         )}
         {(left.files.length > 0 || left.commits.length > 0) && (
-          <Text color="#ff8c28" wrap="truncate-end">
+          <Text color={DRIFT_COLOR} wrap="truncate-end">
             {`drift: ${left.files.length} files, ${left.commits.length} commits`}
           </Text>
         )}
