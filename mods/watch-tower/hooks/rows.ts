@@ -1,9 +1,15 @@
 // What the pane shows, as data: register.tsx maps each Row to elements.
-import type { AgentRun, Ledger, Usage } from '../types'
+import type { AgentRun, Commit, Git, Ledger, Plan, Usage } from '../types'
 import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
+import { shown } from './commits'
 import { elapsed, shortModel, tokens, usd } from './format'
 import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
 import type { Shares } from './ledger'
+import { unplanned } from './plan'
+
+/** How many commits the pane lists before counting the rest. */
+const COMMITS = 5
+const DRIFT_COLOR = '#ff8c28'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
@@ -58,4 +64,27 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
   const turnTime = elapsed((main.endedAt ?? now) - main.startedAt)
 
   return [line('turn', joined([`Σ turn     ${turnTime}`, plural(turn.agents, 'agent'), spent(turn.usage), cost(turn.cents)], '  ')), ...rows]
+}
+
+/**
+ * The session's commits, newest first: hash and subject, then size; `✓` when
+ * the plan names the subject, `!` when it does not, no mark without a plan.
+ * Ends with the branch and its uncommitted paths; nothing outside a repo.
+ */
+export function commitRows(git: Git | null, commits: Commit[], plan: Plan | null): Row[] {
+  if (git === null) return []
+  const { list, earlier } = shown(commits, COMMITS)
+  const line = (key: string, text: string, indent = 0): Row => ({ key, indent, spans: [{ text, isDim: true }] })
+  const rows = list.flatMap(commit => {
+    const isOff = plan !== null && unplanned(plan, [commit.subject]).length > 0
+    const mark = plan === null ? '' : isOff ? '! ' : '✓ '
+    const text = `${mark}${commit.hash} ${commit.subject}`
+    const head: Row = { key: `commit:${commit.hash}`, indent: 0, spans: [isOff ? { text, color: DRIFT_COLOR } : { text }] }
+
+    return [head, line(`commit:${commit.hash}:size`, `${plural(commit.files, 'file')} +${commit.added} −${commit.removed}`, 2)]
+  })
+  const more = earlier === 0 ? [] : [line('commits:earlier', `+${earlier} earlier`)]
+  const header = rows.length === 0 ? [] : [line('commits', 'commits')]
+
+  return [...header, ...rows, ...more, line('commits:git', `${git.branch}  ±${git.dirty} uncommitted`)]
 }

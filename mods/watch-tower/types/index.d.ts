@@ -53,8 +53,8 @@ export type AgentRun = {
   weight: number
 }
 
-/** `dirty`: uncommitted paths; `commits`: commits since the plan was attached. */
-export type Git = { branch: string; dirty: number; commits: number }
+/** `dirty`: uncommitted paths. */
+export type Git = { branch: string; dirty: number }
 
 /** One commit of the session: short hash, subject, and its size. */
 export type Commit = { hash: string; subject: string; files: number; added: number; removed: number }

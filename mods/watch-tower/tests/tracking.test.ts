@@ -15,8 +15,15 @@ const pane = {
   props: { title: 'Watch Tower', isFocused: false, bodyColumns: 60, placement: 'dock' },
 } as any
 
-/** A fake repo: the plan file, a git log the test appends to, and the user's answer to the guard. */
-type World = { files: Record<string, string>; subjects: string[]; answer: string; asked: string[]; opened: { id: string; title?: string }[] }
+/** A fake repo: the plan file, a git log the test appends to (oldest first), and the user's answer to the guard. */
+type World = { files: Record<string, string>; subjects: string[]; isRepo: boolean; answer: string; asked: string[]; opened: { id: string; title?: string }[] }
+
+/** `git log --shortstat` of the subjects, newest first, each commit one file and two lines added. */
+const shortstat = (subjects: string[]) =>
+  subjects
+    .map((subject, at) => `${(at + 1).toString(16).padStart(7, '0')}\t${subject}\n\n 1 file changed, 2 insertions(+)`)
+    .reverse()
+    .join('\n')
 
 // The engine hands the hooks absolute paths: a fake file is found by its tail.
 const fileKey = (world: World, path: string) => Object.keys(world.files).find(key => path.endsWith(key))
@@ -51,10 +58,10 @@ function engine(on: On, world: World) {
   on('fs.exists', ($, e) => ({ value: fileKey(world, e.path) !== undefined }) as any)
   on('process.run', ($, e) => {
     const [, sub, flag] = e.argv
-    const stdout =
-      sub === 'rev-parse' && flag === '--abbrev-ref' ? 'feat/msv' : sub === 'rev-parse' ? 'base0' : sub === 'log' ? world.subjects.join('\n') : ''
+    const log = e.argv.includes('--shortstat') ? shortstat(world.subjects) : world.subjects.join('\n')
+    const stdout = sub === 'rev-parse' && flag === '--abbrev-ref' ? 'feat/msv' : sub === 'rev-parse' ? 'base0' : sub === 'log' ? log : ''
 
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
+    return { value: { exitCode: world.isRepo ? 0 : 128, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
   })
   on('tool.call', ($, e) => {
     if (e.tool === 'AskUserQuestion') {
@@ -80,7 +87,7 @@ async function step($: any, model: string, agentId?: string) {
 
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], answer: 'Deny', asked: [], opened: [] })
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
@@ -282,6 +289,44 @@ describe('plan tracking', () => {
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /Σ turn .* 0 agents  ↑0k ↓0k  \$0\.00/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('commits of the session appear after the command that made them, marked against the plan, and outlive the prompt', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    const ui = await $.ui.mount(pane)
+    expect(await ui.find({ type: 'Text', text: /^feat\/msv  ±0 uncommitted$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^commits$/ })).toBeUndefined()
+
+    repo.subjects.push('wip: scratch')
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "wip: scratch"' })
+    await clock.advance(500)
+    expect(await ui.find({ type: 'Text', text: /^0000001 wip: scratch$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^ {4}1 file \+2 −0$/ })).toBeDefined()
+
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
+    repo.subjects.push('chore(hse): add hse app skeleton', 'b', 'c', 'd', 'e')
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m e' })
+    await $.prompt.submit({ text: 'next' })
+    await clock.advance(500)
+    expect(await ui.find({ type: 'Text', text: /^! 0000006 e$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^✓ 0000002 chore\(hse\): add hse app skeleton$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /wip: scratch/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /^\+1 earlier$/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('outside a git repository, no commits section and nothing fails', async ($, on) => {
+    const repo = { ...world(), isRepo: false }
+    engine(on, repo)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    const ui = await $.ui.mount(pane)
+    expect(await ui.find({ type: 'Text', text: /uncommitted/ })).toBeUndefined()
     await ui.unmount()
   })
 })

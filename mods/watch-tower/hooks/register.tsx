@@ -6,16 +6,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { AgentRun, Gauge, Phase, Plan } from '../types'
+import type { AgentRun, Commit, Gauge, Phase, Plan } from '../types'
 import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned, subRun } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
+import { parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
 import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
-import { totalRows, treeRows } from './rows'
+import { commitRows, totalRows, treeRows } from './rows'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
 import { BODY_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
@@ -37,6 +38,8 @@ const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
 const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as AgentRun[])
 const ledger = atom({ plugin: 'watch-tower', key: 'ledger' } as const, LEDGER)
 const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
+const sessionBase = atom({ plugin: 'watch-tower', key: 'sessionBase' } as const, null)
+const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, [] as Commit[])
 const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
 const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
@@ -135,16 +138,19 @@ function describePosition(current: Plan): string {
   return `${NAME}: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
 }
 
-/** Re-reads the plan and the commit log, and takes the git state. */
+/** Re-reads the plan and the commit logs, and takes the git state. */
 async function refresh($: EngineInterface): Promise<void> {
   const current = await read($, plan)
   const branch = await git($, 'rev-parse', '--abbrev-ref', 'HEAD')
   const dirty = lines(await git($, 'status', '--porcelain')).length
-  const since = current?.base == null ? [] : lines(await git($, 'log', '--format=%s', `${current.base}..HEAD`))
+  const base = await read($, sessionBase)
+  const log = base === null ? null : await git($, 'log', '--format=%h%x09%s', '--shortstat', `${base}..HEAD`)
 
-  await update($, gitState, () => (branch === null ? null : { branch, dirty, commits: since.length }))
+  await update($, gitState, () => (branch === null ? null : { branch, dirty }))
+  await update($, commits, () => parseLog(log ?? ''))
   if (current === null) return
 
+  const since = current.base == null ? [] : lines(await git($, 'log', '--format=%s', `${current.base}..HEAD`))
   const loaded = await load($, current.path, current.base).catch(() => null)
   if (loaded !== null) await update($, plan, () => loaded)
   await update($, drift, last => ({ ...last, commits: unplanned(loaded ?? current, since) }))
@@ -231,6 +237,8 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'session' })
     const startedAt = await $.clock.now()
     await update($, ledger, last => (last.startedAt === 0 ? { ...last, startedAt } : last))
+    const head = await git($, 'rev-parse', 'HEAD')
+    await update($, sessionBase, last => last ?? head)
     timer?.cancel()
     timer = $.clock.every(FRAME_MS, async () => {
       const now = await $.clock.now()
@@ -238,6 +246,7 @@ export const register: Register = (on, options) => {
     })
     void $.ui.open({ id: PANE, title: TITLE })
     await restore($)
+    await refresh($)
 
     return next(e)
   })
@@ -419,7 +428,7 @@ export const register: Register = (on, options) => {
     const books = await read($, ledger)
     const cents = shares(team, books)
     const crew = [...treeRows(team, { now, shares: cents }), ...totalRows(team, books, { now, shares: cents })]
-    const repo = await read($, gitState)
+    const log = commitRows(await read($, gitState), await read($, commits), current)
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
     const style = styleFor(status.code)
@@ -432,6 +441,8 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" paddingX={1}>
         {crew.map(row => rowLine(ui, row))}
         {crew.length > 0 && <Text dimColor>{rule}</Text>}
+        {log.map(row => rowLine(ui, row))}
+        {log.length > 0 && <Text dimColor>{rule}</Text>}
         {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
         {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
         <Text bold color={style.shell}>
@@ -471,9 +482,6 @@ export const register: Register = (on, options) => {
               </Text>
             )}
           </Text>
-        )}
-        {repo !== null && (
-          <Text dimColor wrap="truncate-end">{`${repo.branch}  ±${repo.dirty}  +${repo.commits} commits`}</Text>
         )}
         {(left.files.length > 0 || left.commits.length > 0) && (
           <Text color="#ff8c28" wrap="truncate-end">
