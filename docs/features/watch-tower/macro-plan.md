@@ -91,7 +91,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 #### D. 🟢 `mods/watch-tower/hooks/pricing.ts`
 **Purpose**: per-model rates, proportions only.
 
-**Changes**: `RATES` by family (`fable`, `opus`, `sonnet`, `haiku`: input, output per MTok; cache-write ×1.25, cache-read ×0.1); `weightOf(model, usage)`; unknown model → max rates.
+**Changes**: `RATES` by model-id prefix, most specific first (`fable-5-1`, `opus-5-5`, `sonnet-5` differ from older versions: input, output, cache-read per MTok; cache-write ×1.25); `weightOf(model, usage)`; unknown model → max rates.
 
 **Why**: UF3 cost shares. One small file to edit when prices move.
 
@@ -101,7 +101,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 **Purpose**: totals and cost apportionment.
 
 **Changes**:
-- `LEDGER` initial; `charged(ledger, usage, weight)`; `turnBegan(ledger)`; `measured(ledger, contextPct, costUsd)`; `agentCounted(ledger)`; `toolCounted(ledger)`
+- `LEDGER` initial; `billed(ledger, usage, weight)` (not `charged`: that name is the agent's, both are imported by `register.tsx`); `usageOf(ModelUsage)`; `turnBegan(ledger)`; `measured(ledger, contextPct, costUsd)`; `agentCounted(ledger)`; `toolCounted(ledger)`
 - `shares(agents, ledger)`: cents per agent id = `weight / session.weight × costUsd`, largest-remainder rounding; `null` when no cost
 - `turnTotals(agents, ledger)`, `hitRate(usage)`
 
