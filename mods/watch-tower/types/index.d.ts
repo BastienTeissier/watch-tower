@@ -27,6 +27,9 @@ export type Vitals = {
   costUsd: number | null
 }
 
+/** Token counts of model requests: fresh input, output, input read from and written to the prompt cache. */
+export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number }
+
 export type AgentStatus = 'running' | 'done' | 'failed'
 
 /**
