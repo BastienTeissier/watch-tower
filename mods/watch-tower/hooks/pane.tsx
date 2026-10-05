@@ -17,7 +17,7 @@ type Run = { text: string; color: string; isShell: boolean }
 export const pressKey = (rowKey: string) => `press:${rowKey}`
 
 const spanText = (Text: Ui['Text'], span: Span, at: number) => (
-  <Text key={at} color={span.color} dimColor={span.isDim}>
+  <Text key={String(at)} color={span.color} dimColor={span.isDim}>
     {span.text}
   </Text>
 )
