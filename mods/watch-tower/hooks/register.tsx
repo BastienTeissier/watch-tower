@@ -145,7 +145,7 @@ async function refresh($: EngineInterface): Promise<void> {
   const dirty = lines(await git($, 'status', '--porcelain')).length
   // First parent only: a merge counts once, with its size, not as every commit it brought in.
   const base = await read($, sessionBase)
-  const range = `${base}..HEAD`
+  const range = base === '' ? 'HEAD' : `${base}..HEAD`
   const log = base === null ? null : await git($, 'log', '--first-parent', '-n', String(MAX_COMMITS), '--format=%h%x09%s', '--shortstat', range)
   const total = base === null ? 0 : Number((await git($, 'rev-list', '--first-parent', '--count', range)) ?? 0)
 
@@ -240,7 +240,8 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'session' })
     const startedAt = await $.clock.now()
     await update($, ledger, last => (last.startedAt === 0 ? { ...last, startedAt } : last))
-    const head = await git($, 'rev-parse', 'HEAD')
+    // A branch with no commit yet has no HEAD: every commit it gets is the session's.
+    const head = (await git($, 'rev-parse', 'HEAD')) ?? ((await git($, 'rev-parse', '--git-dir')) === null ? null : '')
     await update($, sessionBase, last => last ?? head)
     timer?.cancel()
     timer = $.clock.every(FRAME_MS, async () => {

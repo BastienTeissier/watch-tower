@@ -23,6 +23,8 @@ type World = {
   files: Record<string, string>
   subjects: string[]
   isRepo: boolean
+  /** No commit yet: anything naming HEAD fails until the first one. */
+  isUnborn: boolean
   runs: string[][]
   answer: string
   asked: string[]
@@ -36,7 +38,7 @@ const hashOf = (at: number) => (at + 1).toString(16).padStart(7, '0')
 function gitOut(world: World, argv: string[]): string {
   const [sub, flag] = argv
   const head = world.subjects.length === 0 ? 'base0' : hashOf(world.subjects.length - 1)
-  if (sub === 'rev-parse') return flag === '--abbrev-ref' ? 'feat/msv' : head
+  if (sub === 'rev-parse') return flag === '--abbrev-ref' ? 'feat/msv' : flag === '--git-dir' ? '.git' : head
 
   const base = argv.find(arg => arg.endsWith('..HEAD'))?.slice(0, -'..HEAD'.length)
   const from = base === undefined || base === 'base0' ? 0 : world.subjects.findIndex((_, at) => hashOf(at) === base) + 1
@@ -85,9 +87,10 @@ function engine(on: On, world: World) {
   on('process.run', ($, e) => {
     const argv = e.argv.slice(1)
     world.runs.push(argv)
-    const stdout = world.isRepo ? gitOut(world, argv) : ''
+    const isOk = world.isRepo && !(world.isUnborn && world.subjects.length === 0 && argv.some(arg => arg.includes('HEAD')))
+    const stdout = isOk ? gitOut(world, argv) : ''
 
-    return { value: { exitCode: world.isRepo ? 0 : 128, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
+    return { value: { exitCode: isOk ? 0 : 128, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
   })
   on('tool.call', ($, e) => {
     if (e.tool === 'AskUserQuestion') {
@@ -113,7 +116,7 @@ async function step($: any, model: string, agentId?: string) {
 
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, runs: [], answer: 'Deny', asked: [], opened: [] })
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, isUnborn: false, runs: [], answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
@@ -349,6 +352,19 @@ describe('plan tracking', () => {
     expect(repo.runs.filter(argv => argv.includes('--shortstat')).at(-1)).toEqual(
       expect.arrayContaining(['-n', '5', '--first-parent', '0000001..HEAD']),
     )
+    await ui.unmount()
+  })
+
+  test('a session started before the first commit lists every commit the branch gets', async ($, on) => {
+    const repo = { ...world(), isUnborn: true }
+    const clock = engine(on, repo)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    repo.subjects.push('feat: first')
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "feat: first"' })
+    const ui = await $.ui.mount(pane)
+    await clock.advance(500)
+    expect(await ui.find({ type: 'Text', text: /^0000001 feat: first$/ })).toBeDefined()
     await ui.unmount()
   })
 

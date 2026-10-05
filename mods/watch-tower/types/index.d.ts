@@ -80,7 +80,7 @@ declare module 'claude-code' {
       agents: AgentRun[]
       ledger: Ledger
       git: Git | null
-      /** HEAD when the session started; commits after it are the session's. */
+      /** HEAD when the session started, `''` on a branch with no commit yet; commits after it are the session's. */
       sessionBase: string | null
       commits: SessionCommits
       drift: Drift
