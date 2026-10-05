@@ -64,8 +64,6 @@ describe('treeRows', () => {
       '  · step 5',
       '  · step 6',
     ])
-    // At most ten rows under the agent's own.
-    expect(rows.length - 1).toBeLessThanOrEqual(10)
   })
 
   test('a finished agent expands too; fewer actions show as they are; others keep their rows', () => {

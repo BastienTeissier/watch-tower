@@ -290,6 +290,7 @@ describe('plan tracking', () => {
     expect(await mark(ui, 'main')).toBe('✗')
     expect(await mark(ui, 'a2')).toBe('✗')
     expect(await ui.find({ type: 'Text', text: / 1m05s ↑0k ↓0k$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Button', text: '✗' })).toBeDefined()
     expect(await ui.find({ type: 'Button', text: '●' })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' } as any)
