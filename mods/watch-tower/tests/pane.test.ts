@@ -27,6 +27,23 @@ function engine(on: On) {
   return mock.clock(on, { now: NOW })
 }
 
+/**
+ * Starts a session on `surface`, sends a prompt (stubbed by the test) and a measure, and returns
+ * where a text first appears in the pane's Texts (-1 when it does not) and whether it holds the Tap.
+ */
+async function turnPane($: any, surface: (typeof SURFACES)[number]) {
+  await $.session.start({ surface, cwd: '/work', isInteractive: true })
+  await $.prompt.submit({ text: 'go' })
+  await $.session.measure({ context: { window: 200_000, percent: 12 }, rateLimits: [{ kind: 'five_hour', percentUsed: 42 }], changed: ['context', 'rateLimits'] })
+
+  const ui = await $.ui.mount(pane(surface))
+  const texts: string[] = (await ui.findAll({ type: 'Text' })).map((one: any) => one.text)
+  const hasTap = (await ui.find({ key: 'tap' })) !== undefined
+  await ui.unmount()
+
+  return { at: (pattern: RegExp) => texts.findIndex(text => pattern.test(text)), hasTap }
+}
+
 describe('watch-tower pane', () => {
   test('follows a tool call, an alert and the tap', async ($, on) => {
     engine(on)
@@ -106,49 +123,45 @@ describe('watch-tower pane', () => {
     }
   })
 
-  test('the pane reads agents, plan, context and quotas, then the companion last', async ($, on) => {
+  test('the pane reads agents, commits, plan, context and quotas, then the companion last', async ($, on) => {
     engine(on)
+    mock.store(on)
+    on('session.cwd', () => ({ value: '/work' }) as any)
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    // A repository with one commit of the session.
+    on('process.run', ($, e) => {
+      const [, verb] = e.argv
+      const isBranch = e.argv.includes('--abbrev-ref')
+      const stdout = verb === 'log' ? 'abc1234\tfeat: add x\n 1 file changed, 2 insertions(+)' : verb === 'rev-list' ? '1' : verb === 'rev-parse' ? (isBranch ? 'work' : 'f00d123') : ''
+
+      return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
+    })
 
     for (const surface of SURFACES) {
-      await $.session.start({ surface, cwd: '/work', isInteractive: true })
-      await $.prompt.submit({ text: 'go' } as any)
-      await $.session.measure({
-        context: { window: 200_000, percent: 12 },
-        rateLimits: [{ kind: 'five_hour', percentUsed: 42 }],
-        changed: ['context', 'rateLimits'],
-      } as any)
-
-      const ui = await $.ui.mount(pane(surface))
-      const texts: string[] = (await ui.findAll({ type: 'Text' })).map((one: any) => one.text)
-      const at = (pattern: RegExp) => texts.findIndex(text => pattern.test(text))
+      const { at } = await turnPane($, surface)
       expect(at(/^ main$/)).toBeGreaterThanOrEqual(0)
-      expect(at(/^ main$/)).toBeLessThan(at(/^no plan/))
+      expect(at(/^ main$/)).toBeLessThan(at(/abc1234 feat: add x/))
+      expect(at(/abc1234 feat: add x/)).toBeLessThan(at(/^no plan/))
       expect(at(/^no plan/)).toBeLessThan(at(/ctx 12%/))
       expect(at(/ctx 12%/)).toBeLessThan(at(/5h/))
       expect(at(/5h/)).toBeLessThan(at(/^THINKING$/))
       expect(at(/^THINKING$/)).toBeLessThan(at(/~~~~~~/))
-      await ui.unmount()
     }
   })
 
-  test('with the companion off, no state, sprite, message or Tap; the rest stays', { options: { companion: false } }, async ($, on) => {
+  test('with the companion off, no state, sprite, message or Tap; the rest stays in order', { options: { companion: false } }, async ($, on) => {
     engine(on)
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
 
     for (const surface of SURFACES) {
-      await $.session.start({ surface, cwd: '/work', isInteractive: true })
-      await $.prompt.submit({ text: 'go' } as any)
       await $.classic.Notification({ message: 'Claude is idle', notification_type: 'idle_prompt' })
-
-      const ui = await $.ui.mount(pane(surface))
-      expect(await ui.find({ key: pressKey('main') })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /^no plan/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /ALERT/ })).toBeUndefined()
-      expect(await ui.find({ type: 'Text', text: /Claude is idle/ })).toBeUndefined()
-      expect(await ui.find({ type: 'Text', text: /~~~~~~/ })).toBeUndefined()
-      expect(await ui.find({ key: 'tap' })).toBeUndefined()
-      await ui.unmount()
+      const { at, hasTap } = await turnPane($, surface)
+      expect(at(/^ main$/)).toBe(1)
+      expect(at(/^ main$/)).toBeLessThan(at(/^no plan/))
+      expect(at(/^no plan/)).toBeLessThan(at(/ctx 12%/))
+      expect(at(/ctx 12%/)).toBeLessThan(at(/5h/))
+      for (const gone of [/ALERT|THINKING/, /Claude is idle/, /~~~~~~/]) expect(at(gone)).toBe(-1)
+      expect(hasTap).toBe(false)
     }
   })
 
