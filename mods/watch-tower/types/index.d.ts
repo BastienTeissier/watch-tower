@@ -56,6 +56,9 @@ export type AgentRun = {
 /** `dirty`: uncommitted paths; `commits`: commits since the plan was attached. */
 export type Git = { branch: string; dirty: number; commits: number }
 
+/** One commit of the session: short hash, subject, and its size. */
+export type Commit = { hash: string; subject: string; files: number; added: number; removed: number }
+
 /** What left the plan: edited files no task lists, commit subjects no task names. */
 export type Drift = { files: string[]; commits: string[] }
 
@@ -74,6 +77,9 @@ declare module 'claude-code' {
       agents: AgentRun[]
       ledger: Ledger
       git: Git | null
+      /** HEAD when the session started; commits after it are the session's. */
+      sessionBase: string | null
+      commits: Commit[]
       drift: Drift
       allowed: string[]
       cache: Cache
