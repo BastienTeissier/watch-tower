@@ -148,7 +148,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 - `turn.complete`: main → end `main` run; subagent → `ended` (done / failed), toast kept
 - `session.measure`: `measured` (context %, cost)
 - `refresh()`: also load `commits` from `sessionBase..HEAD`
-- `ui.render` Pane: sections in PRD order from `Row[]`; a row with `press` → `Button plain` for the label + `Text` for the rest; handlers `update` `expanded`; companion block only when `options.companion`
+- `ui.render` Pane: sections in PRD order from `Row[]`; a row with `press` → `Button plain` for its status mark (first span) + `Text` for the label and the rest (`Button` has no `wrap`, so a long label in it would push the time off the row); handlers `update` `expanded`; companion block only when `options.companion`
 - `ui.render` AbovePrompt: `bandRow` above the plan line; shown without a plan too
 - Remove vitals wiring and `vitalsLine`
 
