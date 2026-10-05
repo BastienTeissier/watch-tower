@@ -16,6 +16,8 @@ const RATES: [prefix: string, rate: Rate][] = [
   ['sonnet', { input: 3, output: 15, cacheRead: 0.3 }],
   ['haiku', { input: 1, output: 5, cacheRead: 0.1 }],
 ]
+// A 1-hour write costs 2× input; weighing all writes at 1.25× slightly under-weights
+// agents on a 1h cache, but the shares still add up to the engine's cost.
 const CACHE_WRITE = 1.25
 
 /** An unknown model is priced at the most expensive known rates, so it is never under-reported. */
