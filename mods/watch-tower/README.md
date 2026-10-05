@@ -1,13 +1,14 @@
 # watch-tower
 
-A Claude Code mod to follow the session's work at a glance: subagents and
-what they are doing, tokens and cost, quotas, the prompt cache countdown and
-the attached plan's position, with a guard on off-plan edits. Plugin name is
+A Claude Code mod to follow the session's work at a glance: the main thread
+and its subagents as a tree, each with its time, tokens and share of the cost,
+the session's commits, the attached plan's position, context, quotas and the
+prompt cache countdown, with a guard on off-plan edits. Plugin name is
 `watch-tower` (a temporary name; `claude-*` names are reserved by Claude Code).
 
-An ASCII companion rides along: the Buddy, mimicking the ESP32 Buddy
-([claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy)) with
-no Bridge, no BLE and no hardware.
+An optional ASCII companion rides along at the bottom: the Buddy, mimicking
+the ESP32 Buddy ([claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy))
+with no Bridge, no BLE and no hardware.
 
 ## Run
 
@@ -16,7 +17,40 @@ claude --plugin-dir mods/watch-tower    # from the repo root: loads and hot-relo
 ```
 
 The pane opens by itself on wide terminals (144+ columns). Anywhere else,
-type `/watch-tower`. Pick the companion's Species in `/config` (`watch-tower.species`, default `snail`).
+type `/watch-tower`. In `/config`, `watch-tower.companion` turns the companion
+on or off (default on) and `watch-tower.species` picks its Species (default
+`snail`); both apply without a restart.
+
+## The pane
+
+From top to bottom:
+
+1. **Agents**: `main` (the turn's thread) and its subagents as a tree, a child
+   under its parent. A running agent takes three rows (label and time; model,
+   `↑` input, `↓` output and `$` share of the session cost; current action), a
+   finished one a single row (`✓` done, `✗` failed with why). Finished agents
+   stay until the next prompt; background ones stay while they run. Then
+   `Σ turn` and `Σ session` (time, agents, tools, tokens, cache hit rate,
+   cost). The rows' costs sum to `Σ turn`, and `Σ session` matches `/cost`.
+2. **Commits**: the session's commits, newest first (hash, subject, files
+   `+added −removed`), `✓` when the plan names the subject, `!` when it does
+   not; `+N earlier` past five; then the branch and its uncommitted count.
+3. **Plan**: phase, task X/Y, the next task, and drift.
+4. **Context and quotas**: context %, the prompt cache countdown (`❄ cache
+   58:12`, TTL detected from the last response or forced with
+   `watch-tower.cacheTtl`), the 5h and 7d gauges.
+5. **Companion** (when on): its state, sprite, message and `Tap`.
+
+**Expand an agent**: focus its status mark (ctrl+x tab into the pane, then Tab
+or the arrows) and press Enter, or click it. The mark becomes `▾` and the
+details open under the row: model, tokens and cost, cache read and write, the
+prompt it was given in three lines, its last five actions. One agent is open
+at a time; pressing again closes it, and a new prompt closes `main` and any
+agent it clears.
+
+**Band**: while the pane is not on screen (narrow terminal, or closed), a line
+above the prompt sums up the turn (`N agents running`, time, tokens, cost)
+while anything runs, above the plan position.
 
 ## Files
 
@@ -28,7 +62,10 @@ type `/watch-tower`. Pick the companion's Species in `/config` (`watch-tower.spe
 | `hooks/species.ts`   | 18 Species × 3 frames, port of the firmware's `species/*.h`     |
 | `hooks/plan.ts`      | pure: parse a plan's To Do List, tick tasks from commit subjects, position, off-plan paths |
 | `hooks/agents.ts`    | pure: the agent tree, main thread and subagents (after agent-radar) |
-| `hooks/rows.ts`      | pure: the tree's rows and the `Σ turn` / `Σ session` totals    |
+| `hooks/rows.ts`      | pure: the pane as rows: tree, expanded details, totals, band summary, commits |
+| `hooks/pane.tsx`     | draws rows and gauges with the surface's elements; a pressable row's mark is a Button |
+| `hooks/commits.ts`   | pure: parse the session's `git log --shortstat`                |
+| `hooks/format.ts`    | pure: times, token counts, dollars, short model names          |
 | `hooks/ledger.ts`    | pure: session tokens and cost, each agent's share of the cost |
 | `hooks/pricing.ts`   | pure: per-model list prices, to weigh each agent's share     |
 | `hooks/cache.ts`     | pure: prompt cache countdown and TTL detection (after token-weather) |
@@ -62,12 +99,8 @@ and its `Files:` line its files. A plan without that section is read whole.
 - The attached plan is remembered per working directory + branch and comes
   back on the next session.
 
-Below the plan: the agent tree (each agent's time, `↑` input, `↓` output and
-`$` share of the session cost), `Σ turn` and `Σ session` totals, context %
-with the prompt cache countdown (`ctx 42%  ❄ cache 58:12`, TTL detected from
-the last response or forced with `watch-tower.cacheTtl`),
-`branch  ±dirty  +commits` and drift. Below 144 columns a
-one-line band above the prompt carries the position instead.
+Below 144 columns, where the pane does not open by itself, the band above
+the prompt carries the position.
 
 ## Event → state mapping
 
@@ -86,7 +119,8 @@ one-line band above the prompt carries the position instead.
 | `prompt.submit`, `turn.complete`            | turn timer, plan + git refresh | —           |
 | `tool.call` Bash with `git commit`/`merge`/`rebase`/… | plan + git refresh | —           |
 | `turn.step` (main loop)                     | cache clock restart | —             |
-| `agent.spawn`, `tool.call` / `turn.complete` with `agentId` | subagent lines, toast on finish | — |
+| `turn.step`                                 | the agent's model, tokens and cost share | — |
+| `agent.spawn`, `tool.call` / `turn.complete` with `agentId` | agent tree, toast on finish | — |
 
 Differences from the Bridge (ADR-0005 in claude-ble-buddy): `WAITING` is emitted on
 permission requests, Quota gauges come from `session.measure` instead of

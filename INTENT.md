@@ -34,20 +34,25 @@ the Buddy companion runs on an ESP32 over BLE.
 Following the agents' work while Claude runs. One pane (and a one-line band
 on narrow terminals) that answers, at a glance:
 
-- **Who is working?** One line per subagent with what it is doing right now.
+- **Who is working?** The main thread and its subagents as a tree, each with
+  what it is doing right now, its time, tokens and share of the cost; one can
+  be expanded for its prompt, cache counts and last actions.
 - **Am I on plan?** Phase, task X of Y, the next task. A task is done when a
   commit carries its title from the plan; the mod then ticks the box in the
   plan file, so the file stays the source of truth across sessions.
-- **How is the session doing?** Context %, cost, turn time, tool count, 5h/7d
-  quotas, prompt cache countdown, git branch and dirty count.
+- **What did it commit?** The session's commits with their size, marked
+  against the plan.
+- **How is the session doing?** Turn and session totals (time, tokens, cost),
+  context %, 5h/7d quotas, prompt cache countdown, git branch and dirty count.
 - **Is it drifting?** Count of off-plan files and off-plan commits.
 
 And one intervention: an edit to a file no plan task lists is held until I
 allow it or deny it. The point is to be asked at the moment of drift rather
 than to discover it in the diff.
 
-The ASCII companion (the Buddy) is an extra kept from the hardware version:
-its state at a glance (thinking, running a command, editing, waiting on me).
+The ASCII companion (the Buddy) is an optional extra kept from the hardware
+version, last in the pane: its state at a glance (thinking, running a command,
+editing, waiting on me).
 The mod was named after it; it is now named after its purpose
 (`watch-tower`, a temporary name).
 

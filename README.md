@@ -8,7 +8,7 @@ Needs Claude Code 2.1.287 or newer.
 
 | Mod | What it does | Command |
 | --- | --- | --- |
-| [**watch-tower**](mods/watch-tower/README.md) | A pane to follow the session's work at a glance: subagents and what they are doing, session vitals, quota gauges, the prompt cache countdown, the attached plan's position, and a guard that holds edits to files the plan does not list. An ASCII companion rides along as an extra | `/watch-tower`, `/watch-tower plan <path>` |
+| [**watch-tower**](mods/watch-tower/README.md) | A pane to follow the session's work at a glance: the agent tree with each agent's time, tokens and cost (expand one for its details), the session's commits, the attached plan's position, context, quota gauges, the prompt cache countdown, and a guard that holds edits to files the plan does not list. An optional ASCII companion rides along | `/watch-tower`, `/watch-tower plan <path>` |
 
 ## Install
 
