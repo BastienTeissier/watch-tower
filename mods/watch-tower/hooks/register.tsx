@@ -456,7 +456,7 @@ export const register: Register = (on, options) => {
     const open = await read($, expanded)
     const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, books, { now, shares: cents })]
     // One agent open at a time: pressing another moves the details, pressing it again closes them.
-    const toggle = ({ agentId }: Press) => update($, expanded, id => (id === agentId ? null : agentId))
+    const toggle = ({ agentId }: Press) => void update($, expanded, id => (id === agentId ? null : agentId))
     const log = commitRows(await read($, gitState), await read($, commits), current)
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
