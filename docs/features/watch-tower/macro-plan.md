@@ -81,7 +81,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 
 **Changes**:
 - `spawned` takes parent / model / prompt / turn; `saw` pushes to `actions` (cap 5)
-- 🟢 `mainRun(prompt, turn, now)`, `nextTurn(list)` (drop non-running, keep running background), `tree(list)` (depth-first, spawn order, with depth), `charged(list, id, usage, weight)`
+- 🟢 `mainRun(prompt, turn, now)`, `nextTurn(list)` (drop non-running, keep running background), `tree(list)` (depth-first, spawn order, with depth), `modelSeen(list, id, model)` (main's model from `turn.step` usage), `charged(list, id, usage, weight)`
 - Remove `isShown`, `SHOW_DONE_MS`
 
 **Why**: retention and nesting rules of UF2.
@@ -142,7 +142,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 **Changes**:
 - `session.start`: set `sessionBase` (HEAD) and `ledger.startedAt` when unset
 - `prompt.submit`: `turnBegan`, `nextTurn`, new `main` run; clear `expanded` if its agent left
-- `turn.step`: after `yield* next(e)`, charge `result.usage` to `e.agentId ?? 'main'` and to the ledger (beside the existing cache clock)
+- `turn.step`: after `yield* next(e)`, `modelSeen` from `result.usage.model`; charge `result.usage` to `e.agentId ?? 'main'` and to the ledger (beside the existing cache clock)
 - `agent.spawn`: record `parentAgentId`, model, prompt, turn; `agentCounted`
 - `tool.call`: existing guard and tracking (also for `main`); `toolCounted`
 - `turn.complete`: main → end `main` run; subagent → `ended` (done / failed), toast kept

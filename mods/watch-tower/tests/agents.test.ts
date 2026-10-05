@@ -49,6 +49,7 @@ describe('lifecycle', () => {
 
   test('a failed agent records why; a model is learnt once seen', () => {
     let list = modelSeen([mainRun('go', 0)], 'main', 'claude-opus-5-5')
+    expect(modelSeen(list, 'main', 'claude-opus-5-5')).toBe(list)
     list = ended(list, 'main', true, 9, 'aborted')
 
     expect(list[0]).toMatchObject({ model: 'claude-opus-5-5', status: 'failed', endedAt: 9 })

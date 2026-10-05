@@ -38,9 +38,11 @@ export function saw(list: AgentRun[], id: string, action: string): AgentRun[] {
   )
 }
 
-/** The model an agent's request ran on, kept once known. */
+/** The model an agent's request ran on; the same list when it is already known. */
 export function modelSeen(list: AgentRun[], id: string, model: string): AgentRun[] {
-  return list.map(one => (one.id === id && one.model !== model ? { ...one, model } : one))
+  if (!list.some(one => one.id === id && one.model !== model)) return list
+
+  return list.map(one => (one.id === id ? { ...one, model } : one))
 }
 
 export function ended(list: AgentRun[], id: string, isFailed: boolean, now: number, reason: string): AgentRun[] {
