@@ -11,6 +11,7 @@ import { MAIN, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, 
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
+import { NO_USAGE } from './ledger'
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { treeRows } from './rows'
@@ -271,7 +272,7 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
     await update($, vitals, last => turnStarted(last, now))
-    await update($, agents, list => [mainRun(e.text, now), ...nextTurn(list)])
+    await update($, agents, list => [mainRun(e.text, 1, now), ...nextTurn(list)])
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
@@ -321,6 +322,9 @@ export const register: Register = (on, options) => {
         endedAt: null,
         tools: 0,
         actions: [],
+        turn: 1,
+        usage: NO_USAGE,
+        weight: 0,
       }
       await update($, agents, list => spawned(list, run))
     }

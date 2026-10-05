@@ -1,13 +1,14 @@
 // Agents of the turn, pure: the main thread and its subagents as a tree, each
 // with what it was last seen doing (after agent-radar, github.com/hamzafer/claude-code-mods).
-import type { AgentRun } from '../types'
+import type { AgentRun, Usage } from '../types'
+import { NO_USAGE, added } from './ledger'
 
 export const MAIN = 'main'
 /** How many recent actions an agent keeps. */
 const ACTIONS = 5
 
-/** The main thread's run for a new prompt; its model is learnt from its first request. */
-export function mainRun(prompt: string, now: number): AgentRun {
+/** The main thread's run for prompt number `turn`; its model is learnt from its first request. */
+export function mainRun(prompt: string, turn: number, now: number): AgentRun {
   return {
     id: MAIN,
     parentId: null,
@@ -21,6 +22,9 @@ export function mainRun(prompt: string, now: number): AgentRun {
     endedAt: null,
     tools: 0,
     actions: [],
+    turn,
+    usage: NO_USAGE,
+    weight: 0,
   }
 }
 
@@ -44,6 +48,11 @@ export function modelSeen(list: AgentRun[], id: string, model: string): AgentRun
   if (!list.some(one => one.id === id && one.model !== model)) return list
 
   return list.map(one => (one.id === id ? { ...one, model } : one))
+}
+
+/** One request's usage and price weight, added to the agent that made it. */
+export function charged(list: AgentRun[], id: string, usage: Usage, weight: number): AgentRun[] {
+  return list.map(one => (one.id === id ? { ...one, usage: added(one.usage, usage), weight: one.weight + weight } : one))
 }
 
 /**

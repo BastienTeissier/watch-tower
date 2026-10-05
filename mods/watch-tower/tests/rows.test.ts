@@ -9,10 +9,10 @@ const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => sp
 
 describe('treeRows', () => {
   test('a running agent takes three rows, a finished one a single row', () => {
-    let list = [{ ...mainRun('go', 0), model: 'claude-opus-5-5' }]
-    list = spawned(list, { ...mainRun('look', 1_000), id: 'a', parentId: 'main', type: 'Explore', description: 'map events', model: 'claude-haiku-4-5-20251001' })
+    let list = [{ ...mainRun('go', 1, 0), model: 'claude-opus-5-5' }]
+    list = spawned(list, { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', description: 'map events', model: 'claude-haiku-4-5-20251001' })
     list = saw(list, 'a', 'reading hooks/register.tsx')
-    list = spawned(list, { ...mainRun('plan', 2_000), id: 'b', parentId: 'main', type: 'Plan', description: 'design ledger' })
+    list = spawned(list, { ...mainRun('plan', 1, 2_000), id: 'b', parentId: 'main', type: 'Plan', description: 'design ledger' })
     list = ended(list, 'b', false, 152_000, 'answer')
 
     expect(treeRows(list, 66_000).map(text)).toEqual([
@@ -27,13 +27,13 @@ describe('treeRows', () => {
   })
 
   test('a failed agent says why on its one row', () => {
-    const list = ended([mainRun('go', 0)], 'main', true, 5_000, 'aborted')
+    const list = ended([mainRun('go', 1, 0)], 'main', true, 5_000, 'aborted')
 
     expect(treeRows(list, 9_000).map(text)).toEqual(['✗ main  stopped: aborted | 5s'])
   })
 
   test('a subagent spawned without a description is labelled with its type alone', () => {
-    const list = ended([{ ...mainRun('look', 0), id: 'a', parentId: 'main', type: 'Explore' }], 'a', false, 2_000, 'answer')
+    const list = ended([{ ...mainRun('look', 1, 0), id: 'a', parentId: 'main', type: 'Explore' }], 'a', false, 2_000, 'answer')
 
     expect(treeRows(list, 9_000).map(text)).toEqual(['✓ Explore | 2s'])
   })

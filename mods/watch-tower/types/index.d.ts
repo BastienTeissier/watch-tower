@@ -30,11 +30,18 @@ export type Vitals = {
 /** Token counts of model requests: fresh input, output, input read from and written to the prompt cache. */
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
+/** Totals since the session started; `weight` is their list price, to split the cost by. */
+export type Totals = { usage: Usage; weight: number; agents: number; tools: number }
+
+/** `turn` counts prompts; `costUsd` and `contextPct` are the engine's last measure. */
+export type Ledger = { startedAt: number; turn: number; session: Totals; costUsd: number | null; contextPct: number | null }
+
 export type AgentStatus = 'running' | 'done' | 'failed'
 
 /**
  * One agent of the turn: the main thread (id `main`) or a subagent under its
- * parent. `actions` holds what it was last seen doing, newest last.
+ * parent. `actions` holds what it was last seen doing, newest last; `turn`
+ * is the prompt it was spawned in, `usage` and `weight` what its requests spent.
  */
 export type AgentRun = {
   id: string
@@ -49,6 +56,9 @@ export type AgentRun = {
   endedAt: number | null
   tools: number
   actions: string[]
+  turn: number
+  usage: Usage
+  weight: number
 }
 
 /** `dirty`: uncommitted paths; `commits`: commits since the plan was attached. */
@@ -71,6 +81,7 @@ declare module 'claude-code' {
       plan: Plan | null
       vitals: Vitals
       agents: AgentRun[]
+      ledger: Ledger
       git: Git | null
       drift: Drift
       allowed: string[]

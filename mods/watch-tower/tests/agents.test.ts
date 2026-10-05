@@ -4,7 +4,7 @@ import { currentAction, ended, mainRun, modelSeen, nextTurn, saw, spawned, tree 
 import type { AgentRun } from '../types'
 
 const sub = (id: string, parentId: string, extra: Partial<AgentRun> = {}): AgentRun => ({
-  ...mainRun('look', 0),
+  ...mainRun('look', 1, 0),
   id,
   parentId,
   description: id,
@@ -16,7 +16,7 @@ const shape = (list: AgentRun[]) => tree(list).map(({ run, depth }) => `${depth}
 
 describe('tree', () => {
   test('puts main first and nests subagents under their parent, in spawn order', () => {
-    let list = [mainRun('go', 0)]
+    let list = [mainRun('go', 1, 0)]
     list = spawned(list, sub('a', 'main'))
     list = spawned(list, sub('b', 'main'))
     list = spawned(list, sub('a1', 'a'))
@@ -25,14 +25,14 @@ describe('tree', () => {
   })
 
   test('hangs an agent whose parent left under main, and roots subagents when main is absent', () => {
-    expect(shape([mainRun('go', 0), sub('x', 'gone')])).toEqual(['0:main', '1:x'])
+    expect(shape([mainRun('go', 1, 0), sub('x', 'gone')])).toEqual(['0:main', '1:x'])
     expect(shape([sub('a', 'main'), sub('a1', 'a')])).toEqual(['0:a', '1:a1'])
   })
 })
 
 describe('lifecycle', () => {
   test('nextTurn drops main and finished agents, keeps a running background agent', () => {
-    const list = [mainRun('go', 0), sub('done', 'main', { status: 'done' }), sub('bg', 'main')]
+    const list = [mainRun('go', 1, 0), sub('done', 'main', { status: 'done' }), sub('bg', 'main')]
 
     expect(nextTurn(list).map(one => one.id)).toEqual(['bg'])
   })
@@ -49,7 +49,7 @@ describe('lifecycle', () => {
 
   test('a failed agent takes its running foreground descendants down, not background ones', () => {
     const list = [
-      mainRun('go', 0),
+      mainRun('go', 1, 0),
       sub('fg', 'main'),
       sub('fg1', 'fg'),
       sub('bg', 'main', { isBackground: true }),
@@ -64,7 +64,7 @@ describe('lifecycle', () => {
   })
 
   test('a failed agent records why; a model is learnt once seen', () => {
-    let list = modelSeen([mainRun('go', 0)], 'main', 'claude-opus-5-5')
+    let list = modelSeen([mainRun('go', 1, 0)], 'main', 'claude-opus-5-5')
     expect(modelSeen(list, 'main', 'claude-opus-5-5')).toBe(list)
     list = ended(list, 'main', true, 9, 'aborted')
 
