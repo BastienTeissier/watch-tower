@@ -111,10 +111,21 @@ function engine(on: On, world: World) {
 
     return { result: '', text: '' } as any
   })
+  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
   mock.store(on)
   mock.env(on, { HOME: '/home/me' })
 
   return mock.clock(on, { now: NOW })
+}
+
+/** A terminal session in the fake repo. */
+const start = ($: any) => $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+/** Each spawn gets the next id, `a1` first, on `model`. */
+function stubAgents(on: On, model = 'claude-sonnet-5-5') {
+  let spawns = 0
+  on('agent.spawn', () => ({ agentId: `a${(spawns += 1)}`, model }) as any)
 }
 
 /** One model request of `agentId` (the main thread when absent), read to its end. */
@@ -141,7 +152,7 @@ describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
     const repo = world()
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     const { text } = await $.command.run({ command: 'watch-tower', args: '' } as any)
     expect(text).toBe('Watch Tower pane opened.')
@@ -151,7 +162,7 @@ describe('plan tracking', () => {
   test('/watch-tower plan attaches the plan, the pane and the band show its position', async ($, on) => {
     const repo = world()
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     const { text } = await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
     expect(text).toContain('Phase 0 — App skeleton 0/3')
@@ -172,7 +183,7 @@ describe('plan tracking', () => {
   test('a commit named by the plan ticks its box and moves the position', async ($, on) => {
     const repo = world()
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
     await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
 
     repo.subjects.push('chore(hse): add hse app skeleton', 'wip: scratch')
@@ -188,7 +199,7 @@ describe('plan tracking', () => {
   test('the guard holds an off-plan edit, denies it on Deny and remembers Allow file', async ($, on) => {
     const repo = world()
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     // No plan attached: nothing is asked.
     await $.tool.call({ tool: 'Edit', file_path: `${CWD}/hse/models.py`, old_string: 'a', new_string: 'b' })
@@ -220,11 +231,11 @@ describe('plan tracking', () => {
   test('/watch-tower plan off detaches and a new session restores the branch plan from the store', async ($, on) => {
     const repo = world()
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
     await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
 
     // A reload runs session.start again: the plan comes back from the store.
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
     expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toContain('now: Register')
 
     expect((await $.command.run({ command: 'watch-tower', args: 'plan off' } as any)).text).toBe('watch-tower: plan detached.')
@@ -234,10 +245,8 @@ describe('plan tracking', () => {
   test('the tree shows main and its subagents, finished ones until the next prompt', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
-    on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }) as any)
-    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    stubAgents(on)
+    await start($)
 
     await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
@@ -265,11 +274,8 @@ describe('plan tracking', () => {
   test('a child sits under its parent, timers run, main freezes when its turn ends or is interrupted', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
-    let spawns = 0
-    on('agent.spawn', () => ({ agentId: `a${(spawns += 1)}`, model: 'claude-sonnet-5-5' }) as any)
-    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    stubAgents(on)
+    await start($)
 
     await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'parent', prompt: 'look' } as any)
@@ -304,14 +310,13 @@ describe('plan tracking', () => {
   test('requests charge their agent, the engine cost is split into rows that sum to Σ turn', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
-    on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-haiku-4-5-20251001' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    stubAgents(on, 'claude-haiku-4-5-20251001')
     on('session.measure', ($, e) => ({ changed: e.changed }))
     // The fake API answers each request with the same usage, on the model asked for.
     on('turn.step', async function* ($, e) {
       return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: { ...USAGE, model: e.model } } as any
     })
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
@@ -342,9 +347,8 @@ describe('plan tracking', () => {
   test('commits of the session appear after the command that made them, marked against the plan, and outlive the prompt', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
     repo.subjects.push('chore: before the session')
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     const ui = await $.ui.mount(pane)
     expect(await ui.find({ type: 'Text', text: /^feat\/msv  ±0 uncommitted$/ })).toBeDefined()
@@ -376,7 +380,7 @@ describe('plan tracking', () => {
   test('a session started before the first commit lists every commit the branch gets', async ($, on) => {
     const repo = { ...world(), isUnborn: true }
     const clock = engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     repo.subjects.push('feat: first')
     await $.tool.call({ tool: 'Bash', command: 'git commit -m "feat: first"' })
@@ -389,11 +393,8 @@ describe('plan tracking', () => {
   test('on a narrow terminal the band sums up the turn on one line, above the plan, until nothing runs', async ($, on) => {
     const repo = { ...world(), isNarrow: true }
     const clock = engine(on, repo)
-    let spawns = 0
-    on('agent.spawn', () => ({ agentId: `a${(spawns += 1)}`, model: 'claude-sonnet-5-5' }) as any)
-    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    stubAgents(on)
+    await start($)
 
     const band = await $.ui.mount(BAND)
     expect(await band.find({ type: 'Text', text: /engine/ })).toBeDefined()
@@ -429,8 +430,7 @@ describe('plan tracking', () => {
   test('while the pane is shown or the engine holds its survey, the band holds no summary', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
     await $.prompt.submit({ text: 'map the models' } as any)
 
     const band = await $.ui.mount(BAND)
@@ -452,7 +452,7 @@ describe('plan tracking', () => {
   test('outside a git repository, no commits section and nothing fails', async ($, on) => {
     const repo = { ...world(), isRepo: false }
     engine(on, repo)
-    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await start($)
 
     const ui = await $.ui.mount(pane)
     expect(await ui.find({ type: 'Text', text: /uncommitted/ })).toBeUndefined()

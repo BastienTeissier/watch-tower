@@ -23,12 +23,14 @@ function engine(on: On) {
   on('classic.Notification', () => ({}) as any)
   on('classic.PermissionRequest', () => ({}) as any)
   on('session.measure', ($, e) => ({ changed: e.changed }))
+  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
 
   return mock.clock(on, { now: NOW })
 }
 
 /**
- * Starts a session on `surface`, sends a prompt (stubbed by the test) and a measure, and returns
+ * Starts a session on `surface`, sends a prompt and a measure, and returns
  * where a text first appears in the pane's Texts (-1 when it does not) and whether it holds the Tap.
  */
 async function turnPane($: any, surface: (typeof SURFACES)[number]) {
@@ -82,8 +84,6 @@ describe('watch-tower pane', () => {
   test('pressing an agent opens its details, again closes them, another moves them, a new prompt clears a gone one', async ($, on) => {
     engine(on)
     on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }) as any)
-    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
 
     for (const surface of SURFACES) {
       await $.session.start({ surface, cwd: '/work', isInteractive: true })
@@ -127,7 +127,6 @@ describe('watch-tower pane', () => {
     engine(on)
     mock.store(on)
     on('session.cwd', () => ({ value: '/work' }) as any)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
     // A repository with one commit of the session.
     on('process.run', ($, e) => {
       const [, verb] = e.argv
@@ -151,7 +150,6 @@ describe('watch-tower pane', () => {
 
   test('with the companion off, no state, sprite, message or Tap; the rest stays in order', { options: { companion: false } }, async ($, on) => {
     engine(on)
-    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
 
     for (const surface of SURFACES) {
       await $.classic.Notification({ message: 'Claude is idle', notification_type: 'idle_prompt' })
