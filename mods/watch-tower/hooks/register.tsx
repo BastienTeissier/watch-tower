@@ -7,7 +7,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
-import { MAIN, describe, ended, icon, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
+import { MAIN, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
@@ -320,7 +320,7 @@ export const register: Register = (on, options) => {
       const run: AgentRun = {
         id: spawn.agentId,
         parentId: e.parentAgentId ?? MAIN,
-        description: e.description || e.subagentType,
+        description: e.description,
         type: e.subagentType,
         model: spawn.model,
         prompt: e.prompt,
@@ -352,7 +352,7 @@ export const register: Register = (on, options) => {
       const id = e.agentId
       const list = await update($, agents, all => ended(all, id, isFailed, now, e.reason))
       const one = list.find(run => run.id === id)
-      if (one !== undefined) $.ui.toast(`${icon(one)} ${one.description} ${isFailed ? 'failed' : 'done'} (${one.tools} tools)`)
+      if (one !== undefined) $.ui.toast(`${icon(one)} ${label(one)} ${isFailed ? 'failed' : 'done'} (${one.tools} tools)`)
     }
 
     return next(e)

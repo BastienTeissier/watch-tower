@@ -1,14 +1,12 @@
 // What the pane shows, as data: register.tsx maps each Row to elements.
 import type { AgentRun } from '../types'
-import { MAIN, agentColor, currentAction, icon, tree } from './agents'
+import { agentColor, currentAction, icon, label, tree } from './agents'
 import { elapsed, shortModel } from './format'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
 /** One line of the pane: `indent` levels of two cells, then spans; `right` stays visible at the end. */
 export type Row = { key: string; indent: number; spans: Span[]; right?: string }
-
-const label = (run: AgentRun) => (run.id === MAIN ? MAIN : `${run.type}: ${run.description}`)
 
 /**
  * The agent tree: three rows for a running agent (label and time, model,

@@ -11,7 +11,7 @@ export function mainRun(prompt: string, now: number): AgentRun {
   return {
     id: MAIN,
     parentId: null,
-    description: MAIN,
+    description: '',
     type: MAIN,
     model: '',
     prompt,
@@ -74,6 +74,13 @@ export function tree(list: AgentRun[]): { run: AgentRun; depth: number }[] {
 
   // Without a main run (before the first prompt), subagents are the roots.
   return ids.has(MAIN) ? rooted : walk(MAIN, 0)
+}
+
+/** `main`, the type alone when the spawn gave no description, else `type: description`. */
+export function label(run: AgentRun): string {
+  if (run.id === MAIN) return MAIN
+
+  return run.description === '' ? run.type : `${run.type}: ${run.description}`
 }
 
 /** What the agent is doing now: its latest action. */

@@ -32,6 +32,12 @@ describe('treeRows', () => {
     expect(treeRows(list, 9_000).map(text)).toEqual(['✗ main  stopped: aborted | 5s'])
   })
 
+  test('a subagent spawned without a description is labelled with its type alone', () => {
+    const list = ended([{ ...mainRun('look', 0), id: 'a', parentId: 'main', type: 'Explore' }], 'a', false, 2_000, 'answer')
+
+    expect(treeRows(list, 9_000).map(text)).toEqual(['✓ Explore | 2s'])
+  })
+
   test('no agent, no row', () => {
     expect(treeRows([], 0)).toEqual([])
   })
