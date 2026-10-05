@@ -138,6 +138,15 @@ function describePosition(current: Plan): string {
   return `${NAME}: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
 }
 
+/** The band's turn summary; null when no agent runs. */
+async function summaryRow($: EngineInterface) {
+  const team = await read($, agents)
+  const books = await read($, ledger)
+  const { now } = await read($, tick)
+
+  return bandRow(team, books, { now, shares: shares(team, books) })
+}
+
 /** Re-reads the plan and the commit logs, and takes the git state. */
 async function refresh($: EngineInterface): Promise<void> {
   const current = await read($, plan)
@@ -399,17 +408,14 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // One line of plan position below 144 columns, where the pane waits.
+  // Above the prompt: the turn summary while the pane is not on screen, then the plan position.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e)
     if (e.props.hasSurvey) return rest
 
-    // The pane already shows the turn: the summary is for when it is not on screen.
     const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
-    const team = await read($, agents)
     const books = await read($, ledger)
-    const { now } = await read($, tick)
-    const summary = isPaneShown ? null : bandRow(team, books, { now, shares: shares(team, books) })
+    const summary = isPaneShown ? null : await summaryRow($)
     const current = await read($, plan)
     if (summary === null && current === null) return rest
 
