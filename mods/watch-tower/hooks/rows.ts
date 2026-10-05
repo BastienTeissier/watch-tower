@@ -2,15 +2,13 @@
 import type { AgentRun, Ledger, Usage } from '../types'
 import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
 import { elapsed, shortModel, tokens, usd } from './format'
-import { hitRate, turnTotals, upTokens } from './ledger'
+import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
+import type { Shares } from './ledger'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
 /** One line of the pane: `indent` levels of two cells, then spans; `right` stays visible at the end. */
 export type Row = { key: string; indent: number; spans: Span[]; right?: string }
-
-/** Cents per agent id, null when the session reports no cost. */
-export type Shares = Record<string, number> | null
 
 const spent = (usage: Usage) => `↑${tokens(upTokens(usage))} ↓${tokens(usage.output)}`
 const cost = (cents: number | null | undefined) => (cents === null || cents === undefined ? null : usd(cents))
@@ -53,7 +51,7 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
   const line = (key: string, text: string): Row => ({ key, indent: 0, spans: [{ text, isDim: true }] })
   const rows = [
     line('session', joined([`Σ session  ${elapsed(Math.max(0, now - ledger.startedAt))}`, plural(session.agents, 'agent'), plural(session.tools, 'tool')], '  ')),
-    line('session:spent', joined([`           ${spent(session.usage)}`, rate === null ? null : `cache ${rate}%`, cost(ledger.costUsd === null ? null : Math.round(ledger.costUsd * 100))], '  ')),
+    line('session:spent', joined([`           ${spent(session.usage)}`, rate === null ? null : `cache ${rate}%`, cost(sessionCents(ledger))], '  ')),
   ]
   if (main === undefined) return rows
 

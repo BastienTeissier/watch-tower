@@ -59,15 +59,21 @@ export const measured = (ledger: Ledger, contextPct: number | null, costUsd: num
   costUsd: costUsd ?? ledger.costUsd,
 })
 
+/** Cents per agent id, null when the session reports no cost. */
+export type Shares = Record<string, number> | null
+
+/** The engine's session cost in cents, null when it reports none. */
+export const sessionCents = (ledger: Ledger) => (ledger.costUsd === null ? null : Math.round(ledger.costUsd * 100))
+
 /**
  * Cents per agent id: its weight over the session's, times the session cost.
  * Agents gone from the list keep their share as a remainder, so the cents
  * add up to the session cost; rounding gives the largest remainders the
  * spare cents. Null when the engine reports no cost.
  */
-export function shares(agents: AgentRun[], ledger: Ledger): Record<string, number> | null {
-  if (ledger.costUsd === null) return null
-  const total = Math.round(ledger.costUsd * 100)
+export function shares(agents: AgentRun[], ledger: Ledger): Shares {
+  const total = sessionCents(ledger)
+  if (total === null) return null
   const listed = agents.reduce((sum, one) => sum + one.weight, 0)
   const weights = [...agents.map(one => one.weight), Math.max(0, ledger.session.weight - listed)]
   const all = weights.reduce((sum, weight) => sum + weight, 0)
@@ -84,7 +90,7 @@ export function shares(agents: AgentRun[], ledger: Ledger): Record<string, numbe
 export type TurnTotals = { usage: Usage; agents: number; cents: number | null }
 
 /** The current turn: agents spawned in it, background ones still running included. */
-export function turnTotals(agents: AgentRun[], ledger: Ledger, cents: Record<string, number> | null): TurnTotals {
+export function turnTotals(agents: AgentRun[], ledger: Ledger, cents: Shares): TurnTotals {
   const turn = agents.filter(one => one.turn === ledger.turn)
 
   return {
