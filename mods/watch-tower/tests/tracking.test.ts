@@ -196,6 +196,24 @@ describe('plan tracking', () => {
     await ui.unmount()
   })
 
+  test('drift sits right under the plan block, above the context line', async ($, on) => {
+    const repo = world()
+    engine(on, repo)
+    on('session.measure', ($, e) => ({ changed: e.changed }))
+    await start($)
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
+    repo.subjects.push('wip: scratch')
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "wip: scratch"' })
+    await $.session.measure({ context: { window: 200_000, percent: 42 }, rateLimits: [], changed: ['context'] } as any)
+
+    const ui = await $.ui.mount(pane)
+    const texts: string[] = (await ui.findAll({ type: 'Text' })).map((one: any) => one.text)
+    const at = (pattern: RegExp) => texts.findIndex(text => pattern.test(text))
+    expect(at(/^drift: 0 files, 1 commits$/)).toBe(at(/^ {2}next: Wire URLs/) + 1)
+    expect(at(/^drift:/)).toBeLessThan(at(/^ctx 42%/))
+    await ui.unmount()
+  })
+
   test('the guard holds an off-plan edit, denies it on Deny and remembers Allow file', async ($, on) => {
     const repo = world()
     engine(on, repo)
@@ -304,6 +322,28 @@ describe('plan tracking', () => {
     await clock.advance(5_000)
     expect(await mark(ui, 'main')).toBe('✓')
     expect(await ui.find({ type: 'Text', text: / 0s ↑0k ↓0k$/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('the details of an open agent follow what it does', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    stubAgents(on)
+    await start($)
+    await $.prompt.submit({ text: 'map the models' } as any)
+    await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
+
+    const ui = await $.ui.mount(pane)
+    await ui.press({ key: pressKey('a1') })
+    expect(await ui.find({ type: 'Text', text: /· reading/ })).toBeUndefined()
+
+    await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/models.py`, agentId: 'a1' } as any)
+    await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/views.py`, agentId: 'a1' } as any)
+    await clock.advance(500)
+    // Whole lines only, by their indent: the spans inside them match too.
+    const actions = (await ui.findAll({ type: 'Text', text: /^ {4}· reading/ })).map((one: any) => one.text.trim())
+    expect(actions).toEqual(['· reading hse/models.py', '· reading hse/views.py'])
+    expect(await mark(ui, 'a1')).toBe('▾')
     await ui.unmount()
   })
 
@@ -424,6 +464,19 @@ describe('plan tracking', () => {
     await clock.advance(500)
     expect(await band.find({ type: 'Text', text: /^● / })).toBeUndefined()
     expect(await band.find({ type: 'Text', text: /^ P0 0\/3/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('on desktop too, the band summary is one line that truncates rather than wraps', async ($, on) => {
+    const repo = { ...world(), isNarrow: true }
+    const clock = engine(on, repo)
+    await start($)
+    await $.prompt.submit({ text: 'map the models' } as any)
+
+    const band = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await clock.advance(500)
+    const summary = await band.find({ type: 'Text', text: /^● main  0s  ↑0k ↓0k$/ })
+    expect(summary?.props.wrap).toBe('truncate-end')
     await band.unmount()
   })
 
