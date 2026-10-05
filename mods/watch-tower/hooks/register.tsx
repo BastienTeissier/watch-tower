@@ -139,10 +139,9 @@ function describePosition(current: Plan): string {
 }
 
 /** The band's turn summary; null when no agent runs. */
-async function summaryRow($: EngineInterface) {
+async function summaryRow($: EngineInterface, now: number) {
   const team = await read($, agents)
   const books = await read($, ledger)
-  const { now } = await read($, tick)
 
   return bandRow(team, books, { now, shares: shares(team, books) })
 }
@@ -413,9 +412,11 @@ export const register: Register = (on, options) => {
     const rest = await next(e)
     if (e.props.hasSurvey) return rest
 
+    // Read every frame, so the band looks again when the pane leaves the screen.
+    const { now } = await read($, tick)
     const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
     const books = await read($, ledger)
-    const summary = isPaneShown ? null : await summaryRow($)
+    const summary = isPaneShown ? null : await summaryRow($, now)
     const current = await read($, plan)
     if (summary === null && current === null) return rest
 

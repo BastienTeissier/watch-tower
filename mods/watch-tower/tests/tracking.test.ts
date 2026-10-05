@@ -418,7 +418,7 @@ describe('plan tracking', () => {
     await band.unmount()
   })
 
-  test('while the pane is shown, the band holds no summary', async ($, on) => {
+  test('while the pane is shown or the engine holds its survey, the band holds no summary', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
@@ -428,7 +428,17 @@ describe('plan tracking', () => {
     const band = await $.ui.mount(BAND)
     await clock.advance(500)
     expect(await band.find({ type: 'Text', text: /● main/ })).toBeUndefined()
+
+    // The pane leaves the screen: the summary comes back.
+    repo.isNarrow = true
+    await clock.advance(500)
+    expect(await band.find({ type: 'Text', text: /● main/ })).toBeDefined()
     await band.unmount()
+
+    const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } })
+    expect(await survey.find({ type: 'Text', text: /● main/ })).toBeUndefined()
+    expect(await survey.find({ type: 'Text', text: /engine/ })).toBeDefined()
+    await survey.unmount()
   })
 
   test('outside a git repository, no commits section and nothing fails', async ($, on) => {
