@@ -84,6 +84,8 @@ declare module 'claude-code' {
       sessionBase: string | null
       commits: SessionCommits
       drift: Drift
+      /** The agent whose details are open in the tree, null when none. */
+      expanded: string | null
       allowed: string[]
       cache: Cache
     }

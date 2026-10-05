@@ -122,6 +122,9 @@ async function step($: any, model: string, agentId?: string) {
   while (!(await stream.next()).done);
 }
 
+/** An agent's status mark: the button its row starts with. */
+const mark = async (ui: any, id: string) => (await ui.find({ type: 'Button', key: `press:${id}` }))?.text
+
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 
 const BAND = {
@@ -240,20 +243,21 @@ describe('plan tracking', () => {
     await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/models.py`, agentId: 'a1' } as any)
 
     const ui = await $.ui.mount(pane)
-    expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /● Explore: find the models/ })).toBeDefined()
+    expect(await mark(ui, 'main')).toBe('●')
+    expect(await mark(ui, 'a1')).toBe('●')
+    expect(await ui.find({ type: 'Text', text: /^ Explore: find the models$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /sonnet-5\.5/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /reading hse\/models\.py/ })).toBeDefined()
 
     await $.turn.complete({ agentId: 'a1', turnId: 't1', reason: 'answer', answer: 'done', usage: null } as any)
     await clock.advance(31_000)
-    expect(await ui.find({ type: 'Text', text: /✓ Explore: find the models/ })).toBeDefined()
+    expect(await mark(ui, 'a1')).toBe('✓')
     expect(await ui.find({ type: 'Text', text: /reading hse\/models\.py/ })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' } as any)
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /find the models/ })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
+    expect(await mark(ui, 'main')).toBe('●')
     await ui.unmount()
   })
 
@@ -271,8 +275,10 @@ describe('plan tracking', () => {
     await $.agent.spawn({ subagentType: 'Explore', description: 'child', prompt: 'look', parentAgentId: 'a1' } as any)
 
     const ui = await $.ui.mount(pane)
-    expect(await ui.find({ type: 'Text', text: /^ {2}● Explore: parent/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^ {4}● Explore: child/ })).toBeDefined()
+    expect(await mark(ui, 'a1')).toBe('●')
+    expect(await ui.find({ type: 'Text', text: /^ Explore: parent$/ })).toBeDefined()
+    expect(await mark(ui, 'a2')).toBe('●')
+    expect(await ui.find({ type: 'Text', text: /^ Explore: child$/ })).toBeDefined()
 
     await clock.advance(65_000)
     expect(await ui.find({ type: 'Text', text: / 1m05s$/ })).toBeDefined()
@@ -280,15 +286,15 @@ describe('plan tracking', () => {
     // Esc on the main thread: its foreground subagents end with it, and its time stops.
     await $.turn.complete({ turnId: 't1', reason: 'aborted', answer: '', usage: null } as any)
     await clock.advance(10_000)
-    expect(await ui.find({ type: 'Text', text: /✗ main/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /✗ Explore: child/ })).toBeDefined()
+    expect(await mark(ui, 'main')).toBe('✗')
+    expect(await mark(ui, 'a2')).toBe('✗')
     expect(await ui.find({ type: 'Text', text: / 1m05s ↑0k ↓0k$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /●/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', text: '●' })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' } as any)
     await $.turn.complete({ turnId: 't2', reason: 'answer', answer: 'ok', usage: null } as any)
     await clock.advance(5_000)
-    expect(await ui.find({ type: 'Text', text: /✓ main/ })).toBeDefined()
+    expect(await mark(ui, 'main')).toBe('✓')
     expect(await ui.find({ type: 'Text', text: / 0s ↑0k ↓0k$/ })).toBeDefined()
     await ui.unmount()
   })

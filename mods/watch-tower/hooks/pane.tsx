@@ -3,23 +3,34 @@
 import type { ElementTable } from 'claude-code'
 
 import type { Gauge } from '../types'
-import type { Row } from './rows'
+import type { Press, Row, Span } from './rows'
 import { countdown, gaugeBar, gaugeColor } from './style'
 
-type Ui = Pick<ElementTable, 'Box' | 'Text'>
+type Ui = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 
-/** One Row: the label truncates, the time on the right stays visible. */
-export function rowLine({ Box, Text }: Ui, row: Row) {
+const spanText = (Text: Ui['Text'], span: Span, at: number) => (
+  <Text key={at} color={span.color} dimColor={span.isDim}>
+    {span.text}
+  </Text>
+)
+
+/**
+ * One Row: the label truncates, the time on the right stays visible. A row
+ * with `press` draws its first span as a plain button that calls `onPress`.
+ */
+export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: Press) => void) {
+  const { press } = row
+  const [first, ...rest] = row.spans
+  const isButton = press !== undefined && onPress !== undefined && first !== undefined
+
   return (
     <Box key={row.key}>
       <Box flexGrow={1}>
+        {isButton && <Text>{'  '.repeat(row.indent)}</Text>}
+        {isButton && <Button key={`press:${row.key}`} plain label={first.text} onPress={() => onPress(press)} />}
         <Text wrap="truncate-end">
-          {'  '.repeat(row.indent)}
-          {row.spans.map((span, at) => (
-            <Text key={at} color={span.color} dimColor={span.isDim}>
-              {span.text}
-            </Text>
-          ))}
+          {!isButton && '  '.repeat(row.indent)}
+          {(isButton ? rest : row.spans).map((span, at) => spanText(Text, span, at))}
         </Text>
       </Box>
       {row.right !== undefined && <Text dimColor>{` ${row.right}`}</Text>}

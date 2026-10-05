@@ -19,7 +19,7 @@ describe('treeRows', () => {
     // ↑ is fresh input plus cache writes; cache reads are left out.
     list = charged(list, 'a', { input: 40_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }, 1)
 
-    expect(treeRows(list, { now: 66_000, shares: { main: 112, a: 6, b: 62 } }).map(text)).toEqual([
+    expect(treeRows(list, { now: 66_000, shares: { main: 112, a: 6, b: 62 }, expanded: null }).map(text)).toEqual([
       '● main | 1m06s',
       '  opus-5.5 · ↑0k ↓0k · $1.12',
       '  starting',
@@ -28,23 +28,23 @@ describe('treeRows', () => {
       '    reading hooks/register.tsx',
       '  ✓ Plan: design ledger | 2m30s ↑0k ↓0k $0.62',
     ])
-    expect(treeRows(list, { now: 66_000, shares: null }).map(text)[1]).toBe('  opus-5.5 · ↑0k ↓0k')
+    expect(treeRows(list, { now: 66_000, shares: null, expanded: null }).map(text)[1]).toBe('  opus-5.5 · ↑0k ↓0k')
   })
 
   test('a failed agent says why on its one row', () => {
     const list = ended([mainRun('go', 1, 0)], 'main', true, 5_000, 'aborted')
 
-    expect(treeRows(list, { now: 9_000, shares: null }).map(text)).toEqual(['✗ main  stopped: aborted | 5s ↑0k ↓0k'])
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: null }).map(text)).toEqual(['✗ main  stopped: aborted | 5s ↑0k ↓0k'])
   })
 
   test('a subagent spawned without a description is labelled with its type alone', () => {
     const list = ended([{ ...mainRun('look', 1, 0), id: 'a', parentId: 'main', type: 'Explore' }], 'a', false, 2_000, 'answer')
 
-    expect(treeRows(list, { now: 9_000, shares: null }).map(text)).toEqual(['✓ Explore | 2s ↑0k ↓0k'])
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: null }).map(text)).toEqual(['✓ Explore | 2s ↑0k ↓0k'])
   })
 
   test('no agent, no row', () => {
-    expect(treeRows([], { now: 0, shares: null })).toEqual([])
+    expect(treeRows([], { now: 0, shares: null, expanded: null })).toEqual([])
   })
 })
 

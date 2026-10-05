@@ -17,6 +17,7 @@ import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
 import { bandRow, commitRows, totalRows, treeRows } from './rows'
+import type { Press } from './rows'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
 import { BODY_COLOR, DRIFT_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
@@ -41,6 +42,7 @@ const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
 const sessionBase = atom({ plugin: 'watch-tower', key: 'sessionBase' } as const, null)
 const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, { list: [], total: 0 } as SessionCommits)
 const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
+const expanded = atom({ plugin: 'watch-tower', key: 'expanded' } as const, null as string | null)
 const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
 const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|revert|checkout|switch)\b/
@@ -295,7 +297,9 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
     const { turn } = await update($, ledger, turnBegan)
-    await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
+    const team = await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
+    // An agent cleared with the last turn takes its details with it.
+    await update($, expanded, id => (team.some(one => one.id === id) ? id : null))
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
@@ -449,7 +453,10 @@ export const register: Register = (on, options) => {
     const team = await read($, agents)
     const books = await read($, ledger)
     const cents = shares(team, books)
-    const crew = [...treeRows(team, { now, shares: cents }), ...totalRows(team, books, { now, shares: cents })]
+    const open = await read($, expanded)
+    const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, books, { now, shares: cents })]
+    // One agent open at a time: pressing another moves the details, pressing it again closes them.
+    const toggle = ({ agentId }: Press) => update($, expanded, id => (id === agentId ? null : agentId))
     const log = commitRows(await read($, gitState), await read($, commits), current)
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
@@ -461,7 +468,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        {crew.map(row => rowLine(ui, row))}
+        {crew.map(row => rowLine(ui, row, toggle))}
         {crew.length > 0 && <Text dimColor>{rule}</Text>}
         {log.map(row => rowLine(ui, row))}
         {log.length > 0 && <Text dimColor>{rule}</Text>}

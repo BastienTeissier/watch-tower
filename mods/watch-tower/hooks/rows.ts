@@ -9,34 +9,63 @@ import { DRIFT_COLOR } from './style'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
-/** One line of the pane: `indent` levels of two cells, then spans; `right` stays visible at the end. */
-export type Row = { key: string; indent: number; spans: Span[]; right?: string }
+/** What pressing a row does: `toggle` opens or closes the agent's details. */
+export type Press = { kind: 'toggle'; agentId: string }
+
+/**
+ * One line of the pane: `indent` levels of two cells, then spans; `right`
+ * stays visible at the end. A row with `press` is drawn with its first span
+ * as a button.
+ */
+export type Row = { key: string; indent: number; spans: Span[]; right?: string; press?: Press }
 
 const spent = (usage: Usage) => `↑${tokens(upTokens(usage))} ↓${tokens(usage.output)}`
 const cost = (cents: number | null | undefined) => (cents === null || cents === undefined ? null : usd(cents))
 const joined = (parts: (string | null)[], gap: string) => parts.filter(part => part !== null).join(gap)
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+const PROMPT_LINES = 3
+const ACTIONS = 5
 /** The turn's time: the main thread's, frozen when it ended. */
 const turnTime = (main: AgentRun, now: number) => elapsed((main.endedAt ?? now) - main.startedAt)
+
+/** An expanded agent's details: model with tokens and cost, cache counts, its prompt in three lines, its last actions. */
+function details(run: AgentRun, model: string, indent: number): Row[] {
+  const line = (key: string, text: string): Row => ({ key: `${run.id}:${key}`, indent, spans: [{ text, isDim: true }] })
+  const lines = run.prompt === '' ? [] : run.prompt.split('\n')
+  const isCut = lines.length > PROMPT_LINES
+  const prompt = lines.slice(0, PROMPT_LINES).map((text, at) => line(`prompt:${at}`, isCut && at === PROMPT_LINES - 1 ? `${text}…` : text))
+
+  return [
+    line('model', model),
+    line('cache', `cache read ${tokens(run.usage.cacheRead)} · write ${tokens(run.usage.cacheWrite)}`),
+    ...prompt,
+    ...run.actions.slice(-ACTIONS).map((action, at) => line(`action:${at}`, `· ${action}`)),
+  ]
+}
 
 /**
  * The agent tree: three rows for a running agent (label and time, model with
  * tokens and cost, current action), one for a finished agent, with why it
- * failed and its tokens and cost after its time.
+ * failed and its tokens and cost after its time. The `expanded` agent shows
+ * `▾` and its details instead.
  */
-export function treeRows(agents: AgentRun[], { now, shares }: { now: number; shares: Shares }): Row[] {
+export function treeRows(agents: AgentRun[], { now, shares, expanded }: { now: number; shares: Shares; expanded: string | null }): Row[] {
   return tree(agents).flatMap(({ run, depth }) => {
+    const isOpen = run.id === expanded
     const time = elapsed((run.endedAt ?? now) - run.startedAt)
+    const color = agentColor(run)
     const head: Row = {
       key: run.id,
       indent: depth,
-      spans: [{ text: `${icon(run)} ${label(run)}`, color: agentColor(run) }],
+      spans: [{ text: isOpen ? '▾' : icon(run), color }, { text: ` ${label(run)}`, color }],
       right: time,
+      press: { kind: 'toggle', agentId: run.id },
     }
     if (run.status === 'failed') head.spans.push({ text: `  ${currentAction(run)}`, isDim: true })
-    if (run.status !== 'running') return [{ ...head, right: joined([time, spent(run.usage), cost(shares?.[run.id])], ' ') }]
-
+    const top = run.status === 'running' ? head : { ...head, right: joined([time, spent(run.usage), cost(shares?.[run.id])], ' ') }
     const model = joined([shortModel(run.model) || '…', spent(run.usage), cost(shares?.[run.id])], ' · ')
+    if (isOpen) return [top, ...details(run, model, depth + 1)]
+    if (run.status !== 'running') return [top]
 
     return [
       head,
