@@ -19,7 +19,8 @@ claude --plugin-dir mods/watch-tower    # from the repo root: loads and hot-relo
 The pane opens by itself on wide terminals (144+ columns). Anywhere else,
 type `/watch-tower`. In `/config`, `watch-tower.companion` turns the companion
 on or off (default on) and `watch-tower.species` picks its Species (default
-`snail`); both apply without a restart.
+`snail`). A change there reloads the mod with the new value, so neither needs
+a restart.
 
 ## The pane
 
