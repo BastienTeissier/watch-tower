@@ -87,6 +87,11 @@ describe('watch-tower pane', () => {
       await ui.press({ key: 'press:main' })
       expect(await ui.find({ type: 'Button', text: '▾' })).toBeUndefined()
 
+      // A new prompt starts a new main run, closed.
+      await ui.press({ key: 'press:main' })
+      await $.prompt.submit({ text: 'again' } as any)
+      expect((await ui.find({ key: 'press:main' }))?.text).toBe('●')
+
       // The finished subagent is cleared at the next prompt, and its details with it.
       await ui.press({ key: 'press:a1' })
       await $.turn.complete({ agentId: 'a1', turnId: 't', reason: 'answer', answer: '', usage: null } as any)

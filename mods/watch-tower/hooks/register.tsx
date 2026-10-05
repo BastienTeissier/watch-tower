@@ -298,8 +298,8 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const { turn } = await update($, ledger, turnBegan)
     const team = await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
-    // An agent cleared with the last turn takes its details with it.
-    await update($, expanded, id => (team.some(one => one.id === id) ? id : null))
+    // An agent cleared with the last turn takes its details with it; so does main, a new run each prompt.
+    await update($, expanded, id => (id !== MAIN && team.some(one => one.id === id) ? id : null))
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
