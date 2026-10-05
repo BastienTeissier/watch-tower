@@ -130,7 +130,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 
 **Changes**:
 - `treeRows(agents, { now, expanded, shares })`: 3 rows running, 1 finished, expanded block (cache counts, prompt ≤ 3 lines, ≤ 5 actions)
-- `totalRows(...)`, `commitRows(commits, plan)`, `bandRow(agents, ledger, now)` (null when nothing runs)
+- `totalRows(...)`, `commitRows(commits, plan)`, `bandRow(agents, ledger, { now, shares })` (null when nothing runs; `shares` prices the turn)
 
 **Why**: layout rules unit-testable without mounting; `register.tsx` stays wiring.
 
