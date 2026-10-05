@@ -27,7 +27,7 @@ const MAX: Rate = {
   cacheRead: Math.max(...RATES.map(([, rate]) => rate.cacheRead)),
 }
 
-export function rateOf(model: string): Rate {
+function rateOf(model: string): Rate {
   const id = model.replace(/^claude-/, '')
 
   return RATES.find(([prefix]) => id.startsWith(prefix))?.[1] ?? MAX
