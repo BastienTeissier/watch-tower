@@ -8,7 +8,7 @@ Needs Claude Code 2.1.287 or newer.
 
 | Mod | What it does | Command |
 | --- | --- | --- |
-| [**buddy**](mods/buddy/README.md) | An ASCII companion pane mirroring what Claude is doing, with quota gauges, the attached plan's position, session vitals, subagents, the prompt cache countdown, and a guard that holds edits to files the plan does not list | `/buddy`, `/buddy plan <path>` |
+| [**watch-tower**](mods/watch-tower/README.md) | A pane to follow the session's work at a glance: subagents and what they are doing, session vitals, quota gauges, the prompt cache countdown, the attached plan's position, and a guard that holds edits to files the plan does not list. An ASCII companion rides along as an extra | `/watch-tower`, `/watch-tower plan <path>` |
 
 ## Install
 
@@ -17,23 +17,23 @@ From a clone, as a marketplace:
 ```sh
 git clone <this repo> ~/workspace/claude-code-mods
 claude plugin marketplace add ~/workspace/claude-code-mods
-claude plugin install buddy@claude-code-mods
+claude plugin install watch-tower@claude-code-mods
 ```
 
-Restart Claude Code, then type `/buddy`.
+Restart Claude Code, then type `/watch-tower`.
 
 Or try a mod for one session without installing it (it hot-reloads on save):
 
 ```sh
-claude --plugin-dir mods/buddy     # or: make dev MOD=buddy
+claude --plugin-dir mods/watch-tower     # or: make dev MOD=watch-tower
 ```
 
 ## Develop
 
 ```sh
 make check              # validate the marketplace, validate + test every mod
-make dev MOD=buddy      # run Claude Code with the mod loaded from disk
-make typecheck MOD=buddy
+make dev MOD=watch-tower      # run Claude Code with the mod loaded from disk
+make typecheck MOD=watch-tower
 ```
 
 `make typecheck` reads the API types the engine lays in

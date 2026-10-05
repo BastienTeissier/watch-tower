@@ -2,7 +2,7 @@
   "name": "watch-tower",
   "version": "0.1.0",
   "author": { "name": "BastienTeissier" },
-  "description": "On-screen Claude Buddy: an ASCII companion pane mirroring what Claude is doing, with quota gauges, plan position, session vitals, subagents and the prompt cache countdown",
+  "description": "Watch Tower: a pane to follow a Claude Code session at a glance (subagents and what they are doing, context, cost, quotas, prompt cache countdown, attached plan's position, off-plan guard), with an optional ASCII companion",
   "types": "./types/index.d.ts",
   "userConfig": {
     "species": {

@@ -1,17 +1,22 @@
-# buddy
+# watch-tower
 
-The Buddy as a Claude Code mod: an on-screen pane that mimics the ESP32
-Buddy ([claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy)) with no Bridge, no BLE and no hardware. Plugin name is `buddy`
-(`claude-*` names are reserved by Claude Code).
+A Claude Code mod to follow the session's work at a glance: subagents and
+what they are doing, session vitals, quotas, the prompt cache countdown and
+the attached plan's position, with a guard on off-plan edits. Plugin name is
+`watch-tower` (a temporary name; `claude-*` names are reserved by Claude Code).
+
+An ASCII companion rides along: the Buddy, mimicking the ESP32 Buddy
+([claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy)) with
+no Bridge, no BLE and no hardware.
 
 ## Run
 
 ```bash
-claude --plugin-dir mods/buddy    # from the repo root: loads and hot-reloads the mod for that session
+claude --plugin-dir mods/watch-tower    # from the repo root: loads and hot-reloads the mod for that session
 ```
 
 The pane opens by itself on wide terminals (144+ columns). Anywhere else,
-type `/buddy`. Pick a Species in `/config` (`buddy.species`, default `snail`).
+type `/watch-tower`. Pick the companion's Species in `/config` (`watch-tower.species`, default `snail`).
 
 ## Files
 
@@ -32,9 +37,9 @@ type `/buddy`. Pick a Species in `/config` (`buddy.species`, default `snail`).
 Attach a feature plan and the pane shows where it stands:
 
 ```
-/buddy plan docs/features/<feature>/plan.md   # attach (or run /implement-plan <path>)
-/buddy plan                                   # where am I?
-/buddy plan off                               # detach
+/watch-tower plan docs/features/<feature>/plan.md   # attach (or run /implement-plan <path>)
+/watch-tower plan                                   # where am I?
+/watch-tower plan off                               # detach
 ```
 
 The plan's `## N. To Do List` is read: `###` headings are phases, top-level
@@ -57,7 +62,7 @@ and its `Files:` line its files. A plan without that section is read whole.
 
 Below the plan: vitals (`ctx 42%  $1.80  turn 3m05s  tools 57`), the prompt
 cache countdown (`❄ cache 58:12`, TTL detected from the last response or
-forced with `buddy.cacheTtl`), `branch  ±dirty  +commits`, drift, and one
+forced with `watch-tower.cacheTtl`), `branch  ±dirty  +commits`, drift, and one
 line per running subagent (finished ones linger 30 s). Below 144 columns a
 one-line band above the prompt carries the position instead.
 

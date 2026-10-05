@@ -27,26 +27,29 @@ lives under `mods/<name>/` and is installable on its own.
 
 It is the on-screen, no-hardware sibling of
 [claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy), where
-the same Buddy runs on an ESP32 over BLE.
+the Buddy companion runs on an ESP32 over BLE.
 
-## What `buddy` is for
+## What `watch-tower` is for
 
-One pane (and a one-line band on narrow terminals) that answers, at a glance:
+Following the agents' work while Claude runs. One pane (and a one-line band
+on narrow terminals) that answers, at a glance:
 
+- **Who is working?** One line per subagent with what it is doing right now.
 - **Am I on plan?** Phase, task X of Y, the next task. A task is done when a
   commit carries its title from the plan; the mod then ticks the box in the
   plan file, so the file stays the source of truth across sessions.
 - **How is the session doing?** Context %, cost, turn time, tool count, 5h/7d
   quotas, prompt cache countdown, git branch and dirty count.
-- **Who is working?** One line per subagent with what it is doing right now.
 - **Is it drifting?** Count of off-plan files and off-plan commits.
 
 And one intervention: an edit to a file no plan task lists is held until I
 allow it or deny it. The point is to be asked at the moment of drift rather
 than to discover it in the diff.
 
-The ASCII companion is the Buddy's state at a glance (thinking, running a
-command, editing, waiting on me), kept from the hardware version.
+The ASCII companion (the Buddy) is an extra kept from the hardware version:
+its state at a glance (thinking, running a command, editing, waiting on me).
+The mod was named after it; it is now named after its purpose
+(`watch-tower`, a temporary name).
 
 ## Principles
 
