@@ -60,6 +60,45 @@ describe('watch-tower pane', () => {
     }
   })
 
+  test('pressing an agent opens its details, again closes them, another moves them, a new prompt clears a gone one', async ($, on) => {
+    engine(on)
+    on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }) as any)
+    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+
+    for (const surface of SURFACES) {
+      await $.session.start({ surface, cwd: '/work', isInteractive: true })
+      await $.prompt.submit({ text: 'map the models' } as any)
+      await $.agent.spawn({ subagentType: 'Explore', description: 'find', prompt: 'look for models' } as any)
+
+      const ui = await $.ui.mount(pane(surface))
+      expect(await ui.find({ type: 'Text', text: /look for models/ })).toBeUndefined()
+
+      await ui.press({ key: 'press:a1' })
+      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('▾')
+      expect(await ui.find({ type: 'Text', text: /look for models/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /cache read 0k · write 0k/ })).toBeDefined()
+
+      await ui.press({ key: 'press:main' })
+      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('●')
+      expect((await ui.find({ key: 'press:main' }))?.text).toBe('▾')
+      expect(await ui.find({ type: 'Text', text: /^map the models$/ })).toBeDefined()
+
+      await ui.press({ key: 'press:main' })
+      expect(await ui.find({ type: 'Button', text: '▾' })).toBeUndefined()
+
+      // The finished subagent is cleared at the next prompt, and its details with it.
+      await ui.press({ key: 'press:a1' })
+      await $.turn.complete({ agentId: 'a1', turnId: 't', reason: 'answer', answer: '', usage: null } as any)
+      await $.prompt.submit({ text: 'next' } as any)
+      expect(await ui.find({ key: 'press:a1' })).toBeUndefined()
+      // A new agent under the same id starts closed.
+      await $.agent.spawn({ subagentType: 'Explore', description: 'again', prompt: 'look' } as any)
+      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('●')
+      await ui.unmount()
+    }
+  })
+
   test('a permission request puts the Buddy in WAITING', async ($, on) => {
     engine(on)
     await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })

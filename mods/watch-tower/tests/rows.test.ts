@@ -43,6 +43,45 @@ describe('treeRows', () => {
     expect(treeRows(list, { now: 9_000, shares: null, expanded: null }).map(text)).toEqual(['✓ Explore | 2s ↑0k ↓0k'])
   })
 
+  test('the expanded agent shows ▾ and its details: cache counts, prompt in three lines, last five actions', () => {
+    let list = [{ ...mainRun('one\ntwo\nthree\nfour', 1, 0), model: 'claude-opus-5-5' }]
+    for (const at of [1, 2, 3, 4, 5, 6]) list = saw(list, 'main', `step ${at}`)
+    list = charged(list, 'main', { input: 1_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }, 1)
+
+    const rows = treeRows(list, { now: 5_000, shares: { main: 42 }, expanded: 'main' }).map(text)
+    expect(rows).toEqual([
+      '▾ main | 5s',
+      '  opus-5.5 · ↑7k ↓2k · $0.42',
+      '  cache read 310k · write 6k',
+      '  one',
+      '  two',
+      '  three…',
+      '  · step 2',
+      '  · step 3',
+      '  · step 4',
+      '  · step 5',
+      '  · step 6',
+    ])
+    // At most ten rows under the agent's own.
+    expect(rows.length - 1).toBeLessThanOrEqual(10)
+  })
+
+  test('a finished agent expands too; fewer actions show as they are; others keep their rows', () => {
+    let list = [mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore' }]
+    list = ended(saw(list, 'a', 'reading x'), 'a', false, 3_000, 'answer')
+
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: 'a' }).map(text)).toEqual([
+      '● main | 9s',
+      '  … · ↑0k ↓0k',
+      '  starting',
+      '  ▾ Explore | 2s ↑0k ↓0k',
+      '    … · ↑0k ↓0k',
+      '    cache read 0k · write 0k',
+      '    look',
+      '    · reading x',
+    ])
+  })
+
   test('no agent, no row', () => {
     expect(treeRows([], { now: 0, shares: null, expanded: null })).toEqual([])
   })
