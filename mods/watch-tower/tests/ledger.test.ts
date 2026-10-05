@@ -33,6 +33,10 @@ describe('shares', () => {
     expect(shares(agents, costing(2, 10))).toEqual({ main: 60, a: 60 })
   })
 
+  test('a cost reported before any request weighed bills no agent', () => {
+    expect(shares([run('main', 2, 0), run('a', 2, 0)], costing(0.03, 0))).toEqual({ main: 0, a: 0 })
+  })
+
   test('no cost reported, no share', () => {
     expect(shares([run('main', 2, 1)], costing(null, 1))).toBeNull()
   })

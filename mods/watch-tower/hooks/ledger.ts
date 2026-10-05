@@ -71,7 +71,8 @@ export function shares(agents: AgentRun[], ledger: Ledger): Record<string, numbe
   const listed = agents.reduce((sum, one) => sum + one.weight, 0)
   const weights = [...agents.map(one => one.weight), Math.max(0, ledger.session.weight - listed)]
   const all = weights.reduce((sum, weight) => sum + weight, 0)
-  const exact = weights.map(weight => (all === 0 ? 0 : (weight / all) * total))
+  if (all === 0) return Object.fromEntries(agents.map(one => [one.id, 0]))
+  const exact = weights.map(weight => (weight / all) * total)
   const cents = exact.map(Math.floor)
   const spare = total - cents.reduce((sum, one) => sum + one, 0)
   const byRemainder = exact.map((value, at) => ({ at, left: value - Math.floor(value) })).sort((a, b) => b.left - a.left)
