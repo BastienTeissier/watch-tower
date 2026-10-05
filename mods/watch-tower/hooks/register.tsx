@@ -27,7 +27,10 @@ import {
 } from './style'
 import type { Style } from './style'
 
-const PANE = 'watch-tower'
+// The mod's name: pane, command and message prefix. The atoms below repeat it
+// literally: the validator reads a state reference only from string literals.
+const NAME = 'watch-tower'
+const PANE = NAME
 const TITLE = 'Watch Tower'
 const FRAME_MS = 500
 const LOG_DEPTH = '200'
@@ -133,9 +136,9 @@ async function load($: EngineInterface, path: string, base: string | null): Prom
 
 function describePosition(current: Plan): string {
   const at = position(current)
-  if (at.current === null) return `watch-tower: plan complete, ${at.done}/${at.total} tasks done.`
+  if (at.current === null) return `${NAME}: plan complete, ${at.done}/${at.total} tasks done.`
 
-  return `watch-tower: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
+  return `${NAME}: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
 }
 
 /** Re-reads the plan and the commit log, and takes the git state. */
@@ -163,8 +166,8 @@ async function attach($: EngineInterface, path: string): Promise<string> {
     return describePosition((await read($, plan)) ?? current)
   }
   const loaded = await load($, clean, await git($, 'rev-parse', 'HEAD')).catch(() => null)
-  if (loaded === null) return `watch-tower: cannot read ${clean}.`
-  if (loaded.phases.length === 0) return `watch-tower: no checkbox tasks found in ${clean}.`
+  if (loaded === null) return `${NAME}: cannot read ${clean}.`
+  if (loaded.phases.length === 0) return `${NAME}: no checkbox tasks found in ${clean}.`
 
   await update($, plan, () => loaded)
   await update($, drift, () => ({ files: [], commits: [] }))
@@ -179,7 +182,7 @@ async function detach($: EngineInterface): Promise<string> {
   await update($, plan, () => null)
   await $.store.delete(await storeKey($)).catch(() => undefined)
 
-  return 'watch-tower: plan detached.'
+  return `${NAME}: plan detached.`
 }
 
 /** Re-attaches the plan this branch had last time, when its file is still there. */
@@ -213,7 +216,7 @@ async function guard($: EngineInterface, e: ToolCallInput): Promise<string | und
     .catch(() => 'Deny')
 
   if (answer === 'Deny') {
-    return `watch-tower: ${rel} is not listed in the plan (${current.path}) and the user declined this edit. Current task: ${at.current?.title ?? 'none'}.`
+    return `${NAME}: ${rel} is not listed in the plan (${current.path}) and the user declined this edit. Current task: ${at.current?.title ?? 'none'}.`
   }
   if (answer === 'Allow file') await update($, allowed, list => [...list, rel])
   await update($, drift, last => (last.files.includes(rel) ? last : { ...last, files: [...last.files, rel] }))
@@ -228,7 +231,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'watch-tower',
+      name: NAME,
       description: 'Show the Watch Tower pane; `plan <path>` attaches a plan, `plan off` detaches it',
     })
     await emit($, { kind: 'session' })
@@ -250,14 +253,14 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'watch-tower' }, async ($, e) => {
+  on('command.run', { command: NAME }, async ($, e) => {
     const [verb, arg] = e.args.trim().split(/\s+/, 2)
     if (verb === 'plan' && arg === 'off') return { text: await detach($) }
     if (verb === 'plan' && arg !== undefined) return { text: await attach($, arg) }
     if (verb === 'plan') {
       const current = await read($, plan)
 
-      return { text: current === null ? 'watch-tower: no plan attached.' : describePosition(current) }
+      return { text: current === null ? `${NAME}: no plan attached.` : describePosition(current) }
     }
     await $.ui.open({ id: PANE, title: TITLE })
 
@@ -461,7 +464,7 @@ export const register: Register = (on, options) => {
             {at.next !== null && <Text dimColor wrap="truncate-end">{`  next: ${at.next.title}`}</Text>}
           </Box>
         )}
-        {at === null && <Text dimColor>no plan · /watch-tower plan {'<path>'}</Text>}
+        {at === null && <Text dimColor>no plan · /{NAME} plan {'<path>'}</Text>}
         <Text dimColor wrap="truncate-end">{vitalsLine(live, now)}</Text>
         {warm !== null && (
           <Text color={warm.color} dimColor={warm.isCold}>
