@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
+import { pressKey } from '../hooks/pane'
 import { PLAN_MD } from './fixtures'
 
 const NOW = Date.parse('2026-10-04T10:00:00Z')
@@ -123,7 +124,7 @@ async function step($: any, model: string, agentId?: string) {
 }
 
 /** An agent's status mark: the button its row starts with. */
-const mark = async (ui: any, id: string) => (await ui.find({ type: 'Button', key: `press:${id}` }))?.text
+const mark = async (ui: any, id: string) => (await ui.find({ type: 'Button', key: pressKey(id) }))?.text
 
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 

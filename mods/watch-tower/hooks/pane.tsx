@@ -8,6 +8,9 @@ import { countdown, gaugeBar, gaugeColor } from './style'
 
 type Ui = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 
+/** The key of the button a pressable row starts with. */
+export const pressKey = (rowKey: string) => `press:${rowKey}`
+
 const spanText = (Text: Ui['Text'], span: Span, at: number) => (
   <Text key={at} color={span.color} dimColor={span.isDim}>
     {span.text}
@@ -27,7 +30,7 @@ export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: P
     <Box key={row.key}>
       <Box flexGrow={1}>
         {isButton && <Text>{'  '.repeat(row.indent)}</Text>}
-        {isButton && <Button key={`press:${row.key}`} plain label={first.text} onPress={() => onPress(press)} />}
+        {isButton && <Button key={pressKey(row.key)} plain label={first.text} onPress={() => onPress(press)} />}
         <Text wrap="truncate-end">
           {!isButton && '  '.repeat(row.indent)}
           {(isButton ? rest : row.spans).map((span, at) => spanText(Text, span, at))}

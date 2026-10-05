@@ -1,6 +1,8 @@
 import type { On } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 
+import { pressKey } from '../hooks/pane'
+
 const NOW = Date.parse('2026-10-02T10:00:00Z')
 const SURFACES = ['terminal', 'desktop'] as const
 
@@ -74,32 +76,32 @@ describe('watch-tower pane', () => {
       const ui = await $.ui.mount(pane(surface))
       expect(await ui.find({ type: 'Text', text: /look for models/ })).toBeUndefined()
 
-      await ui.press({ key: 'press:a1' })
-      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('▾')
+      await ui.press({ key: pressKey('a1') })
+      expect((await ui.find({ key: pressKey('a1') }))?.text).toBe('▾')
       expect(await ui.find({ type: 'Text', text: /look for models/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /cache read 0k · write 0k/ })).toBeDefined()
 
-      await ui.press({ key: 'press:main' })
-      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('●')
-      expect((await ui.find({ key: 'press:main' }))?.text).toBe('▾')
+      await ui.press({ key: pressKey('main') })
+      expect((await ui.find({ key: pressKey('a1') }))?.text).toBe('●')
+      expect((await ui.find({ key: pressKey('main') }))?.text).toBe('▾')
       expect(await ui.find({ type: 'Text', text: /^map the models$/ })).toBeDefined()
 
-      await ui.press({ key: 'press:main' })
+      await ui.press({ key: pressKey('main') })
       expect(await ui.find({ type: 'Button', text: '▾' })).toBeUndefined()
 
       // A new prompt starts a new main run, closed.
-      await ui.press({ key: 'press:main' })
+      await ui.press({ key: pressKey('main') })
       await $.prompt.submit({ text: 'again' } as any)
-      expect((await ui.find({ key: 'press:main' }))?.text).toBe('●')
+      expect((await ui.find({ key: pressKey('main') }))?.text).toBe('●')
 
       // The finished subagent is cleared at the next prompt, and its details with it.
-      await ui.press({ key: 'press:a1' })
+      await ui.press({ key: pressKey('a1') })
       await $.turn.complete({ agentId: 'a1', turnId: 't', reason: 'answer', answer: '', usage: null } as any)
       await $.prompt.submit({ text: 'next' } as any)
-      expect(await ui.find({ key: 'press:a1' })).toBeUndefined()
+      expect(await ui.find({ key: pressKey('a1') })).toBeUndefined()
       // A new agent under the same id starts closed.
       await $.agent.spawn({ subagentType: 'Explore', description: 'again', prompt: 'look' } as any)
-      expect((await ui.find({ key: 'press:a1' }))?.text).toBe('●')
+      expect((await ui.find({ key: pressKey('a1') }))?.text).toBe('●')
       await ui.unmount()
     }
   })
