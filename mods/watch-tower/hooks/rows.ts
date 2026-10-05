@@ -16,6 +16,8 @@ const spent = (usage: Usage) => `↑${tokens(upTokens(usage))} ↓${tokens(usage
 const cost = (cents: number | null | undefined) => (cents === null || cents === undefined ? null : usd(cents))
 const joined = (parts: (string | null)[], gap: string) => parts.filter(part => part !== null).join(gap)
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+/** The turn's time: the main thread's, frozen when it ended. */
+const turnTime = (main: AgentRun, now: number) => elapsed((main.endedAt ?? now) - main.startedAt)
 
 /**
  * The agent tree: three rows for a running agent (label and time, model with
@@ -57,9 +59,7 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
   ]
   if (main === undefined) return rows
 
-  const turnTime = elapsed((main.endedAt ?? now) - main.startedAt)
-
-  return [line('turn', joined([`Σ turn     ${turnTime}`, plural(turn.agents, 'agent'), spent(turn.usage), cost(turn.cents)], '  ')), ...rows]
+  return [line('turn', joined([`Σ turn     ${turnTime(main, now)}`, plural(turn.agents, 'agent'), spent(turn.usage), cost(turn.cents)], '  ')), ...rows]
 }
 
 /**
@@ -75,7 +75,7 @@ export function bandRow(agents: AgentRun[], ledger: Ledger, { now, shares }: { n
   const main = agents.find(one => one.id === MAIN)
   const subs = running.filter(one => one.parentId !== null).length
   const turn = turnTotals(agents, ledger, shares)
-  const time = main === undefined ? null : elapsed((main.endedAt ?? now) - main.startedAt)
+  const time = main === undefined ? null : turnTime(main, now)
   const text = joined([subs === 0 ? 'main' : `${plural(subs, 'agent')} running`, time, spent(turn.usage), cost(turn.cents)], '  ')
 
   return { key: 'band', indent: 0, spans: [{ text: `${icon(first)} `, color: agentColor(first) }, { text }] }
