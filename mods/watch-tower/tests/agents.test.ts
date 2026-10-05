@@ -47,6 +47,22 @@ describe('lifecycle', () => {
     expect(currentAction(list[0]!)).toBe('step 7')
   })
 
+  test('a failed agent takes its running foreground descendants down, not background ones', () => {
+    const list = [
+      mainRun('go', 0),
+      sub('fg', 'main'),
+      sub('fg1', 'fg'),
+      sub('bg', 'main', { isBackground: true }),
+      sub('was', 'main', { status: 'done', endedAt: 4 }),
+    ]
+    const after = ended(list, 'main', true, 9, 'aborted')
+
+    expect(after.map(one => `${one.id}:${one.status}`)).toEqual(['main:failed', 'fg:failed', 'fg1:failed', 'bg:running', 'was:done'])
+    expect(after.find(one => one.id === 'was')?.endedAt).toBe(4)
+    expect(nextTurn(after).map(one => one.id)).toEqual(['bg'])
+    expect(ended(list, 'main', false, 9, 'answer').filter(one => one.status === 'running').map(one => one.id)).toEqual(['fg', 'fg1', 'bg'])
+  })
+
   test('a failed agent records why; a model is learnt once seen', () => {
     let list = modelSeen([mainRun('go', 0)], 'main', 'claude-opus-5-5')
     expect(modelSeen(list, 'main', 'claude-opus-5-5')).toBe(list)

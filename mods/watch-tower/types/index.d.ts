@@ -40,6 +40,7 @@ export type AgentRun = {
   type: string
   model: string
   prompt: string
+  isBackground: boolean
   status: AgentStatus
   startedAt: number
   endedAt: number | null

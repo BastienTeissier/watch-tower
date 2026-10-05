@@ -15,6 +15,7 @@ export function mainRun(prompt: string, now: number): AgentRun {
     type: MAIN,
     model: '',
     prompt,
+    isBackground: false,
     status: 'running',
     startedAt: now,
     endedAt: null,
@@ -45,9 +46,25 @@ export function modelSeen(list: AgentRun[], id: string, model: string): AgentRun
   return list.map(one => (one.id === id ? { ...one, model } : one))
 }
 
+/**
+ * The agent and, when it failed, its running foreground descendants: the
+ * engine may not report the end of a subagent whose parent was interrupted.
+ */
 export function ended(list: AgentRun[], id: string, isFailed: boolean, now: number, reason: string): AgentRun[] {
+  const gone = new Set([id])
+  for (let grew = isFailed; grew; ) {
+    grew = false
+    for (const one of list) {
+      const isTakenDown = one.status === 'running' && !one.isBackground && one.parentId !== null && gone.has(one.parentId)
+      if (isTakenDown && !gone.has(one.id)) {
+        gone.add(one.id)
+        grew = true
+      }
+    }
+  }
+
   return list.map(one =>
-    one.id === id
+    gone.has(one.id)
       ? {
           ...one,
           status: isFailed ? 'failed' : 'done',

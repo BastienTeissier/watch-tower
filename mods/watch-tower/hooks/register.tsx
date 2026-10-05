@@ -324,6 +324,7 @@ export const register: Register = (on, options) => {
         type: e.subagentType,
         model: spawn.model,
         prompt: e.prompt,
+        isBackground: e.background,
         status: 'running',
         startedAt: await $.clock.now(),
         endedAt: null,
