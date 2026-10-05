@@ -1,0 +1,15 @@
+{
+  "name": "claude-code-mods",
+  "description": "Claude Code mods by BastienTeissier: panes, bands and guards for a working session.",
+  "owner": {
+    "name": "BastienTeissier"
+  },
+  "plugins": [
+    {
+      "name": "buddy",
+      "description": "On-screen Claude Buddy: an ASCII companion pane mirroring what Claude is doing, with quota gauges, plan position, session vitals, subagents and the prompt cache countdown.",
+      "version": "0.1.0",
+      "source": "./mods/buddy"
+    }
+  ]
+}

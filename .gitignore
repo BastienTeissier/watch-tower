@@ -1,0 +1,4 @@
+# Laid by the engine at every load
+.claude-plugin/types/
+node_modules/
+.DS_Store
