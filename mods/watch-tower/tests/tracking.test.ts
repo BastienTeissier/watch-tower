@@ -16,7 +16,7 @@ const pane = {
 } as any
 
 /** A fake repo: the plan file, a git log the test appends to, and the user's answer to the guard. */
-type World = { files: Record<string, string>; subjects: string[]; answer: string; asked: string[] }
+type World = { files: Record<string, string>; subjects: string[]; answer: string; asked: string[]; opened: { id: string; title?: string }[] }
 
 // The engine hands the hooks absolute paths: a fake file is found by its tail.
 const fileKey = (world: World, path: string) => Object.keys(world.files).find(key => path.endsWith(key))
@@ -25,7 +25,11 @@ function engine(on: On, world: World) {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }) as any)
   on('command.register', () => ({ value: {} }) as any)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as any)
+  on('ui.open', ($, e) => {
+    world.opened.push({ id: e.id, title: e.title })
+
+    return { value: { isPlaced: true } } as any
+  })
   on('ui.toast', () => ({ value: undefined }) as any)
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e) // the engine's own band, one marker here
@@ -68,9 +72,19 @@ function engine(on: On, world: World) {
   return mock.clock(on, { now: NOW })
 }
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], answer: 'Deny', asked: [] })
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
+  test('/watch-tower opens the Watch Tower pane', async ($, on) => {
+    const repo = world()
+    engine(on, repo)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    const { text } = await $.command.run({ command: 'watch-tower', args: '' } as any)
+    expect(text).toBe('Watch Tower pane opened.')
+    expect(repo.opened.at(-1)).toEqual({ id: 'watch-tower', title: 'Watch Tower' })
+  })
+
   test('/watch-tower plan attaches the plan, the pane and the band show its position', async ($, on) => {
     const repo = world()
     engine(on, repo)
