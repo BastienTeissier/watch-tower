@@ -9,8 +9,8 @@ import { DRIFT_COLOR } from './style'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
-/** What pressing a row does: `toggle` opens or closes the agent's details. */
-export type Press = { kind: 'toggle'; agentId: string }
+/** What pressing a row names: the agent whose details it opens or closes. */
+export type Press = { agentId: string }
 
 /**
  * One line of the pane: `indent` levels of two cells, then spans; `right`
@@ -67,18 +67,18 @@ export function treeRows(agents: AgentRun[], { now, shares, expanded }: { now: n
     const isOpen = run.id === expanded
     const time = elapsed((run.endedAt ?? now) - run.startedAt)
     const color = agentColor(run)
+    const isRunning = run.status === 'running'
     const head: Row = {
       key: run.id,
       indent: depth,
       spans: [{ text: isOpen ? '▾' : icon(run), color }, { text: ` ${label(run)}`, color }],
-      right: time,
-      press: { kind: 'toggle', agentId: run.id },
+      right: isRunning ? time : joined([time, spent(run.usage), cost(shares?.[run.id])], ' '),
+      press: { agentId: run.id },
     }
     if (run.status === 'failed') head.spans.push({ text: `  ${currentAction(run)}`, isDim: true })
-    const top = run.status === 'running' ? head : { ...head, right: joined([time, spent(run.usage), cost(shares?.[run.id])], ' ') }
     const model = joined([shortModel(run.model) || '…', spent(run.usage), cost(shares?.[run.id])], ' · ')
-    if (isOpen) return [top, ...details(run, model, depth + 1)]
-    if (run.status !== 'running') return [top]
+    if (isOpen) return [head, ...details(run, model, depth + 1)]
+    if (!isRunning) return [head]
 
     return [
       head,
