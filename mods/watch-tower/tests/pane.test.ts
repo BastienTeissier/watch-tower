@@ -106,6 +106,52 @@ describe('watch-tower pane', () => {
     }
   })
 
+  test('the pane reads agents, plan, context and quotas, then the companion last', async ($, on) => {
+    engine(on)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+
+    for (const surface of SURFACES) {
+      await $.session.start({ surface, cwd: '/work', isInteractive: true })
+      await $.prompt.submit({ text: 'go' } as any)
+      await $.session.measure({
+        context: { window: 200_000, percent: 12 },
+        rateLimits: [{ kind: 'five_hour', percentUsed: 42 }],
+        changed: ['context', 'rateLimits'],
+      } as any)
+
+      const ui = await $.ui.mount(pane(surface))
+      const texts: string[] = (await ui.findAll({ type: 'Text' })).map((one: any) => one.text)
+      const at = (pattern: RegExp) => texts.findIndex(text => pattern.test(text))
+      expect(at(/^ main$/)).toBeGreaterThanOrEqual(0)
+      expect(at(/^ main$/)).toBeLessThan(at(/^no plan/))
+      expect(at(/^no plan/)).toBeLessThan(at(/ctx 12%/))
+      expect(at(/ctx 12%/)).toBeLessThan(at(/5h/))
+      expect(at(/5h/)).toBeLessThan(at(/^THINKING$/))
+      expect(at(/^THINKING$/)).toBeLessThan(at(/~~~~~~/))
+      await ui.unmount()
+    }
+  })
+
+  test('with the companion off, no state, sprite, message or Tap; the rest stays', { options: { companion: false } }, async ($, on) => {
+    engine(on)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+
+    for (const surface of SURFACES) {
+      await $.session.start({ surface, cwd: '/work', isInteractive: true })
+      await $.prompt.submit({ text: 'go' } as any)
+      await $.classic.Notification({ message: 'Claude is idle', notification_type: 'idle_prompt' })
+
+      const ui = await $.ui.mount(pane(surface))
+      expect(await ui.find({ key: pressKey('main') })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^no plan/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /ALERT/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /Claude is idle/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /~~~~~~/ })).toBeUndefined()
+      expect(await ui.find({ key: 'tap' })).toBeUndefined()
+      await ui.unmount()
+    }
+  })
+
   test('a permission request puts the Buddy in WAITING', async ($, on) => {
     engine(on)
     await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })

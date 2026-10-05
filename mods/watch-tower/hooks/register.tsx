@@ -238,6 +238,7 @@ async function guard($: EngineInterface, e: ToolCallInput): Promise<string | und
 }
 
 export const register: Register = (on, options) => {
+  const hasCompanion = options.companion !== false
   const species = speciesFor(String(options.species))
   const ttlOverride = asTtl(options.cacheTtl)
   let timer: Timer | undefined
@@ -472,25 +473,6 @@ export const register: Register = (on, options) => {
         {crew.length > 0 && <Text dimColor>{rule}</Text>}
         {log.map(row => rowLine(ui, row))}
         {log.length > 0 && <Text dimColor>{rule}</Text>}
-        {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
-        {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
-        <Text bold color={style.shell}>
-          {style.name}
-        </Text>
-        {Array.from({ length: FRAME_H }, (_, row) => (
-          <Box>
-            {rowRuns(species, style, frame, row).map(run => (
-              <Text color={run.color} bold dimColor={run.isShell && isDimmedPulse}>
-                {run.text}
-              </Text>
-            ))}
-          </Box>
-        ))}
-        <Text wrap="wrap">{status.msg === '' ? ' ' : status.msg}</Text>
-        {isAlert(status.code) && (
-          <Button key="tap" label="Tap" hotkey="t" onPress={() => update($, machine, clearAlert)} />
-        )}
-        <Text dimColor>{rule}</Text>
         {at !== null && current !== null && (
           <Box flexDirection="column">
             <Text wrap="truncate-end">
@@ -502,6 +484,12 @@ export const register: Register = (on, options) => {
           </Box>
         )}
         {at === null && <Text dimColor>no plan · /{NAME} plan {'<path>'}</Text>}
+        {(left.files.length > 0 || left.commits.length > 0) && (
+          <Text color={DRIFT_COLOR} wrap="truncate-end">
+            {`drift: ${left.files.length} files, ${left.commits.length} commits`}
+          </Text>
+        )}
+        <Text dimColor>{rule}</Text>
         {(books.contextPct !== null || warm !== null) && (
           <Text wrap="truncate-end">
             {books.contextPct !== null && <Text dimColor>{`ctx ${books.contextPct}%  `}</Text>}
@@ -512,10 +500,28 @@ export const register: Register = (on, options) => {
             )}
           </Text>
         )}
-        {(left.files.length > 0 || left.commits.length > 0) && (
-          <Text color={DRIFT_COLOR} wrap="truncate-end">
-            {`drift: ${left.files.length} files, ${left.commits.length} commits`}
-          </Text>
+        {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
+        {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
+        {hasCompanion && (
+          <Box flexDirection="column">
+            <Text dimColor>{rule}</Text>
+            <Text bold color={style.shell}>
+              {style.name}
+            </Text>
+            {Array.from({ length: FRAME_H }, (_, row) => (
+              <Box>
+                {rowRuns(species, style, frame, row).map(run => (
+                  <Text color={run.color} bold dimColor={run.isShell && isDimmedPulse}>
+                    {run.text}
+                  </Text>
+                ))}
+              </Box>
+            ))}
+            <Text wrap="wrap">{status.msg === '' ? ' ' : status.msg}</Text>
+            {isAlert(status.code) && (
+              <Button key="tap" label="Tap" hotkey="t" onPress={() => update($, machine, clearAlert)} />
+            )}
+          </Box>
         )}
       </Box>
     )
