@@ -159,7 +159,7 @@ Pure modules compute; `register.tsx` alone touches `$` and maps `Row[]` to eleme
 #### J. `mods/watch-tower/.claude-plugin/plugin.json`
 **Purpose**: UF8 setting.
 
-**Changes**: `userConfig.companion` (boolean, default true, title "Companion"); description rewritten.
+**Changes**: `userConfig.companion` (boolean, default true, title "Companion").
 
 ---
 
@@ -200,7 +200,7 @@ Commit rule: 1 task = 1 commit. `make check` green after each.
 - [ ] **Rename the mod** — `chore(watch-tower): rename buddy mod to watch-tower`
   - Files: `mods/watch-tower/`, `.claude-plugin/marketplace.json`, `Makefile`
 - [ ] **Rewrite the docs** — `docs: present watch-tower as an agent follow-up`
-  - Files: `README.md`, `INTENT.md`, `mods/watch-tower/README.md`
+  - Files: `README.md`, `INTENT.md`, `mods/watch-tower/README.md`, `mods/watch-tower/.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (descriptions)
 - [ ] **Verify**: `make check`; `make dev MOD=watch-tower`, `/watch-tower` opens the pane
 
 ### Phase 2 — UF2 agent tree
