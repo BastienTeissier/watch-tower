@@ -11,22 +11,13 @@ import { MAIN, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, 
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
+import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { treeRows } from './rows'
-import type { Row } from './rows'
 import { VITALS, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
-import {
-  BODY_COLOR,
-  EYE_COLOR,
-  GAUGE_STALE_MS,
-  countdown,
-  eyeGlyph,
-  gaugeBar,
-  gaugeColor,
-  styleFor,
-} from './style'
+import { BODY_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
 import type { Style } from './style'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
@@ -410,7 +401,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Button, Text } = ui
     const { status } = await read($, machine)
     const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
@@ -426,43 +418,12 @@ export const register: Register = (on, options) => {
     const at = current === null ? null : position(current)
     const rule = '─'.repeat(Math.max(10, Math.min(40, e.props.bodyColumns - 2)))
 
-    const gaugeRow = (label: string, gauge: Gauge | null) =>
-      gauge !== null && (
-        <Box>
-          <Text dimColor>{label} </Text>
-          <Text color={gaugeColor(gauge.pct)} dimColor={isStale}>
-            {gaugeBar(gauge.pct)}
-          </Text>
-          <Text dimColor={isStale}> {gauge.pct}%</Text>
-          {gauge.resetsAt !== null && (
-            <Text dimColor> in {countdown(Math.floor((gauge.resetsAt - now) / 1000))}</Text>
-          )}
-        </Box>
-      )
-
-    // The label truncates; the time on the right stays visible.
-    const line = (row: Row) => (
-      <Box key={row.key}>
-        <Box flexGrow={1}>
-          <Text wrap="truncate-end">
-            {'  '.repeat(row.indent)}
-            {row.spans.map((span, at) => (
-              <Text key={at} color={span.color} dimColor={span.isDim}>
-                {span.text}
-              </Text>
-            ))}
-          </Text>
-        </Box>
-        {row.right !== undefined && <Text dimColor>{` ${row.right}`}</Text>}
-      </Box>
-    )
-
     return (
       <Box flexDirection="column" paddingX={1}>
-        {crew.map(line)}
+        {crew.map(row => rowLine(ui, row))}
         {crew.length > 0 && <Text dimColor>{rule}</Text>}
-        {gaugeRow('5h', sample?.five ?? null)}
-        {gaugeRow('7d', sample?.week ?? null)}
+        {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
+        {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
         <Text bold color={style.shell}>
           {style.name}
         </Text>
