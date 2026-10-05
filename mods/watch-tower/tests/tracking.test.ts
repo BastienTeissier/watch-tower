@@ -8,11 +8,11 @@ const CWD = '/work'
 const PLAN = 'docs/plan.md'
 
 const pane = {
-  plugin: 'buddy',
+  plugin: 'watch-tower',
   surface: 'terminal',
   component: 'Pane',
-  requestId: 'buddy',
-  props: { title: 'Buddy', isFocused: false, bodyColumns: 60, placement: 'dock' },
+  requestId: 'watch-tower',
+  props: { title: 'Watch Tower', isFocused: false, bodyColumns: 60, placement: 'dock' },
 } as any
 
 /** A fake repo: the plan file, a git log the test appends to, and the user's answer to the guard. */
@@ -71,12 +71,12 @@ function engine(on: On, world: World) {
 const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], answer: 'Deny', asked: [] })
 
 describe('plan tracking', () => {
-  test('/buddy plan attaches the plan, the pane and the band show its position', async ($, on) => {
+  test('/watch-tower plan attaches the plan, the pane and the band show its position', async ($, on) => {
     const repo = world()
     engine(on, repo)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
-    const { text } = await $.command.run({ command: 'buddy', args: `plan ${PLAN}` } as any)
+    const { text } = await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
     expect(text).toContain('Phase 0 — App skeleton 0/3')
     expect(text).toContain('now: Register the `hse` app')
 
@@ -101,7 +101,7 @@ describe('plan tracking', () => {
     const repo = world()
     engine(on, repo)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
-    await $.command.run({ command: 'buddy', args: `plan ${PLAN}` } as any)
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
 
     repo.subjects.push('chore(hse): add hse app skeleton', 'wip: scratch')
     await $.tool.call({ tool: 'Bash', command: 'git commit -m "chore(hse): add hse app skeleton"' })
@@ -122,7 +122,7 @@ describe('plan tracking', () => {
     await $.tool.call({ tool: 'Edit', file_path: `${CWD}/hse/models.py`, old_string: 'a', new_string: 'b' })
     expect(repo.asked).toHaveLength(0)
 
-    await $.command.run({ command: 'buddy', args: `plan ${PLAN}` } as any)
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
 
     // Listed in the plan, or outside the working directory: passes without a question.
     await $.tool.call({ tool: 'Edit', file_path: `${CWD}/hse/apps.py`, old_string: 'a', new_string: 'b' })
@@ -145,18 +145,18 @@ describe('plan tracking', () => {
     await ui.unmount()
   })
 
-  test('/buddy plan off detaches and a new session restores the branch plan from the store', async ($, on) => {
+  test('/watch-tower plan off detaches and a new session restores the branch plan from the store', async ($, on) => {
     const repo = world()
     engine(on, repo)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
-    await $.command.run({ command: 'buddy', args: `plan ${PLAN}` } as any)
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
 
     // A reload runs session.start again: the plan comes back from the store.
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
-    expect((await $.command.run({ command: 'buddy', args: 'plan' } as any)).text).toContain('now: Register')
+    expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toContain('now: Register')
 
-    expect((await $.command.run({ command: 'buddy', args: 'plan off' } as any)).text).toBe('buddy: plan detached.')
-    expect((await $.command.run({ command: 'buddy', args: 'plan' } as any)).text).toBe('buddy: no plan attached.')
+    expect((await $.command.run({ command: 'watch-tower', args: 'plan off' } as any)).text).toBe('watch-tower: plan detached.')
+    expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toBe('watch-tower: no plan attached.')
   })
 
   test('subagents are listed with what they last did until shortly after they finish', async ($, on) => {

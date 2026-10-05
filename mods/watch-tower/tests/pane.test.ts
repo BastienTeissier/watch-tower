@@ -6,11 +6,11 @@ const SURFACES = ['terminal', 'desktop'] as const
 
 const pane = (surface: (typeof SURFACES)[number]) =>
   ({
-    plugin: 'buddy',
+    plugin: 'watch-tower',
     surface,
     component: 'Pane',
-    requestId: 'buddy',
-    props: { title: 'Buddy', isFocused: false, bodyColumns: 40, placement: 'dock' },
+    requestId: 'watch-tower',
+    props: { title: 'Watch Tower', isFocused: false, bodyColumns: 40, placement: 'dock' },
   }) as any
 
 /** Stands for the engine beneath the mod: a fixed clock and the calls the mod makes. */
@@ -25,7 +25,7 @@ function engine(on: On) {
   return mock.clock(on, { now: NOW })
 }
 
-describe('buddy pane', () => {
+describe('watch-tower pane', () => {
   test('follows a tool call, an alert and the tap', async ($, on) => {
     engine(on)
 

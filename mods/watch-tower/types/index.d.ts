@@ -54,7 +54,7 @@ export type Cache = { lastRequestAt: number | null; ttl: CacheTtl | null }
 
 declare module 'claude-code' {
   interface PluginState {
-    'buddy': {
+    'watch-tower': {
       machine: Machine
       gauges: Gauges | null
       tick: Tick

@@ -1,5 +1,5 @@
 {
-  "name": "buddy",
+  "name": "watch-tower",
   "version": "0.1.0",
   "author": { "name": "BastienTeissier" },
   "description": "On-screen Claude Buddy: an ASCII companion pane mirroring what Claude is doing, with quota gauges, plan position, session vitals, subagents and the prompt cache countdown",

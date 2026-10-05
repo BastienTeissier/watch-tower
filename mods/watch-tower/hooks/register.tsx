@@ -1,4 +1,4 @@
-// Claude Buddy as a mod: wiring only. Session events drive the state machine
+// Watch Tower as a mod: wiring only. Session events drive the state machine
 // (machine.ts), a pane draws the active Species in the state's style, the
 // attached plan's position (plan.ts), the session's vitals, its subagents and
 // the prompt cache's countdown. Everything reaching `$` is in this file: the
@@ -27,22 +27,22 @@ import {
 } from './style'
 import type { Style } from './style'
 
-const PANE = 'buddy'
-const TITLE = 'Buddy'
+const PANE = 'watch-tower'
+const TITLE = 'Watch Tower'
 const FRAME_MS = 500
 const LOG_DEPTH = '200'
 
 // Held by the host, so they survive a hot reload of this file.
-const machine = atom({ plugin: 'buddy', key: 'machine' } as const, INITIAL)
-const gauges = atom({ plugin: 'buddy', key: 'gauges' } as const, null)
-const tick = atom({ plugin: 'buddy', key: 'tick' } as const, { frame: 0, now: 0 })
-const plan = atom({ plugin: 'buddy', key: 'plan' } as const, null)
-const vitals = atom({ plugin: 'buddy', key: 'vitals' } as const, VITALS)
-const agents = atom({ plugin: 'buddy', key: 'agents' } as const, [] as AgentRun[])
-const gitState = atom({ plugin: 'buddy', key: 'git' } as const, null)
-const drift = atom({ plugin: 'buddy', key: 'drift' } as const, { files: [], commits: [] })
-const allowed = atom({ plugin: 'buddy', key: 'allowed' } as const, [] as string[])
-const cache = atom({ plugin: 'buddy', key: 'cache' } as const, COLD)
+const machine = atom({ plugin: 'watch-tower', key: 'machine' } as const, INITIAL)
+const gauges = atom({ plugin: 'watch-tower', key: 'gauges' } as const, null)
+const tick = atom({ plugin: 'watch-tower', key: 'tick' } as const, { frame: 0, now: 0 })
+const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
+const vitals = atom({ plugin: 'watch-tower', key: 'vitals' } as const, VITALS)
+const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as AgentRun[])
+const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
+const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
+const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
+const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
 const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|revert|checkout|switch)\b/
 // How much of the transcript's end to read for the last response's cache usage.
 const TAIL_BYTES = 1024 * 1024
@@ -133,9 +133,9 @@ async function load($: EngineInterface, path: string, base: string | null): Prom
 
 function describePosition(current: Plan): string {
   const at = position(current)
-  if (at.current === null) return `buddy: plan complete, ${at.done}/${at.total} tasks done.`
+  if (at.current === null) return `watch-tower: plan complete, ${at.done}/${at.total} tasks done.`
 
-  return `buddy: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
+  return `watch-tower: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
 }
 
 /** Re-reads the plan and the commit log, and takes the git state. */
@@ -163,8 +163,8 @@ async function attach($: EngineInterface, path: string): Promise<string> {
     return describePosition((await read($, plan)) ?? current)
   }
   const loaded = await load($, clean, await git($, 'rev-parse', 'HEAD')).catch(() => null)
-  if (loaded === null) return `buddy: cannot read ${clean}.`
-  if (loaded.phases.length === 0) return `buddy: no checkbox tasks found in ${clean}.`
+  if (loaded === null) return `watch-tower: cannot read ${clean}.`
+  if (loaded.phases.length === 0) return `watch-tower: no checkbox tasks found in ${clean}.`
 
   await update($, plan, () => loaded)
   await update($, drift, () => ({ files: [], commits: [] }))
@@ -179,7 +179,7 @@ async function detach($: EngineInterface): Promise<string> {
   await update($, plan, () => null)
   await $.store.delete(await storeKey($)).catch(() => undefined)
 
-  return 'buddy: plan detached.'
+  return 'watch-tower: plan detached.'
 }
 
 /** Re-attaches the plan this branch had last time, when its file is still there. */
@@ -213,7 +213,7 @@ async function guard($: EngineInterface, e: ToolCallInput): Promise<string | und
     .catch(() => 'Deny')
 
   if (answer === 'Deny') {
-    return `buddy: ${rel} is not listed in the plan (${current.path}) and the user declined this edit. Current task: ${at.current?.title ?? 'none'}.`
+    return `watch-tower: ${rel} is not listed in the plan (${current.path}) and the user declined this edit. Current task: ${at.current?.title ?? 'none'}.`
   }
   if (answer === 'Allow file') await update($, allowed, list => [...list, rel])
   await update($, drift, last => (last.files.includes(rel) ? last : { ...last, files: [...last.files, rel] }))
@@ -228,8 +228,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'buddy',
-      description: 'Show the Buddy pane; `plan <path>` attaches a plan, `plan off` detaches it',
+      name: 'watch-tower',
+      description: 'Show the Watch Tower pane; `plan <path>` attaches a plan, `plan off` detaches it',
     })
     await emit($, { kind: 'session' })
     timer?.cancel()
@@ -250,18 +250,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'buddy' }, async ($, e) => {
+  on('command.run', { command: 'watch-tower' }, async ($, e) => {
     const [verb, arg] = e.args.trim().split(/\s+/, 2)
     if (verb === 'plan' && arg === 'off') return { text: await detach($) }
     if (verb === 'plan' && arg !== undefined) return { text: await attach($, arg) }
     if (verb === 'plan') {
       const current = await read($, plan)
 
-      return { text: current === null ? 'buddy: no plan attached.' : describePosition(current) }
+      return { text: current === null ? 'watch-tower: no plan attached.' : describePosition(current) }
     }
     await $.ui.open({ id: PANE, title: TITLE })
 
-    return { text: 'Buddy pane opened.' }
+    return { text: 'Watch Tower pane opened.' }
   })
 
   on('command.run', { command: 'implement-plan' }, async ($, e, next) => {
@@ -461,7 +461,7 @@ export const register: Register = (on, options) => {
             {at.next !== null && <Text dimColor wrap="truncate-end">{`  next: ${at.next.title}`}</Text>}
           </Box>
         )}
-        {at === null && <Text dimColor>no plan · /buddy plan {'<path>'}</Text>}
+        {at === null && <Text dimColor>no plan · /watch-tower plan {'<path>'}</Text>}
         <Text dimColor wrap="truncate-end">{vitalsLine(live, now)}</Text>
         {warm !== null && (
           <Text color={warm.color} dimColor={warm.isCold}>
