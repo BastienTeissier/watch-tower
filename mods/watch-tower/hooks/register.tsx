@@ -16,7 +16,7 @@ import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan,
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
-import { commitRows, totalRows, treeRows } from './rows'
+import { bandRow, commitRows, totalRows, treeRows } from './rows'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
 import { BODY_COLOR, DRIFT_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
@@ -402,20 +402,31 @@ export const register: Register = (on, options) => {
   // One line of plan position below 144 columns, where the pane waits.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e)
-    const current = await read($, plan)
-    if (e.props.hasSurvey || current === null) return rest
+    if (e.props.hasSurvey) return rest
 
-    const { Box, Text } = $.ui.resolve(e)
-    const at = position(current)
-    const { contextPct } = await read($, ledger)
+    // The pane already shows the turn: the summary is for when it is not on screen.
+    const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
+    const team = await read($, agents)
+    const books = await read($, ledger)
+    const { now } = await read($, tick)
+    const summary = isPaneShown ? null : bandRow(team, books, { now, shares: shares(team, books) })
+    const current = await read($, plan)
+    if (summary === null && current === null) return rest
+
+    const ui = $.ui.resolve(e)
+    const { Box, Text } = ui
+    const at = current === null ? null : position(current)
 
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate-end">
-          <Text bold color="#a064dc">{` ${planLabel(at.phase)} ${at.phaseDone}/${at.phaseTotal}`}</Text>
-          <Text>{at.current === null ? '  plan complete' : `  ▸ ${at.current.title}`}</Text>
-          {contextPct !== null && <Text dimColor>{`  ctx ${contextPct}%`}</Text>}
-        </Text>
+        {summary !== null && rowLine(ui, summary)}
+        {at !== null && (
+          <Text wrap="truncate-end">
+            <Text bold color="#a064dc">{` ${planLabel(at.phase)} ${at.phaseDone}/${at.phaseTotal}`}</Text>
+            <Text>{at.current === null ? '  plan complete' : `  ▸ ${at.current.title}`}</Text>
+            {books.contextPct !== null && <Text dimColor>{`  ctx ${books.contextPct}%`}</Text>}
+          </Text>
+        )}
         {rest}
       </Box>
     )

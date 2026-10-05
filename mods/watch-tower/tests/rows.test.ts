@@ -4,7 +4,7 @@ import { charged, ended, mainRun, saw, spawned } from '../hooks/agents'
 import { elapsed, shortModel, tokens, usd } from '../hooks/format'
 import { parseLog } from '../hooks/commits'
 import { LEDGER, agentCounted, billed, measured, toolCounted, turnBegan } from '../hooks/ledger'
-import { commitRows, totalRows, treeRows } from '../hooks/rows'
+import { bandRow, commitRows, totalRows, treeRows } from '../hooks/rows'
 import type { Row } from '../hooks/rows'
 
 const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}${row.right === undefined ? '' : ` | ${row.right}`}`
@@ -69,6 +69,25 @@ describe('totalRows', () => {
 
   test('before the first clock tick, the session time reads 0s, never negative', () => {
     expect(totalRows([], { ...LEDGER, startedAt: 5_000 }, { now: 0, shares: null }).map(text)[0]).toBe('Σ session  0s  0 agents  0 tools')
+  })
+})
+
+describe('bandRow', () => {
+  const ledger = turnBegan(LEDGER)
+
+  test('running subagents, the turn time, tokens and cost on one row', () => {
+    const usage = { input: 2_000, output: 14_000, cacheRead: 0, cacheWrite: 125_000 }
+    const list = charged([mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main' }], 'a', usage, 1)
+
+    expect(text(bandRow(list, ledger, { now: 252_000, shares: { main: 0, a: 180 } }) as Row)).toBe('● 1 agent running  4m12s  ↑127k ↓14k  $1.80')
+  })
+
+  test('the main thread alone, no $ without a cost, nothing once no agent runs', () => {
+    const list = [mainRun('go', 1, 0)]
+
+    expect(text(bandRow(list, ledger, { now: 5_000, shares: null }) as Row)).toBe('● main  5s  ↑0k ↓0k')
+    expect(bandRow(ended(list, 'main', false, 5_000, 'answer'), ledger, { now: 9_000, shares: null })).toBeNull()
+    expect(bandRow([], ledger, { now: 0, shares: null })).toBeNull()
   })
 })
 

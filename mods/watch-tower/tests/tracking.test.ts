@@ -25,6 +25,8 @@ type World = {
   isRepo: boolean
   /** No commit yet: anything naming HEAD fails until the first one. */
   isUnborn: boolean
+  /** Below the floor for a pane opened unasked: it waits undrawn. */
+  isNarrow: boolean
   runs: string[][]
   answer: string
   asked: string[]
@@ -63,7 +65,13 @@ function engine(on: On, world: World) {
   on('ui.open', ($, e) => {
     world.opened.push({ id: e.id, title: e.title })
 
-    return { value: { isPlaced: true } } as any
+    return { value: world.isNarrow ? { isPlaced: false, reason: 'narrow' } : { isPlaced: true } } as any
+  })
+  on('ui.panes', () => {
+    const isShown = !world.isNarrow
+    const panes = world.opened.map(({ id, title }) => ({ id, title: title ?? id, isShown, isFocused: false, isPlaced: isShown }))
+
+    return { value: panes } as any
   })
   on('ui.toast', () => ({ value: undefined }) as any)
   on('ui.render', ($, e) => {
@@ -116,7 +124,14 @@ async function step($: any, model: string, agentId?: string) {
 
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, isUnborn: false, runs: [], answer: 'Deny', asked: [], opened: [] })
+const BAND = {
+  ...pane,
+  component: 'AbovePrompt',
+  requestId: 'band',
+  props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { bodyRows: 4 } },
+} as any
+
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, isUnborn: false, isNarrow: false, runs: [], answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
@@ -145,12 +160,7 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /feat\/msv/ })).toBeDefined()
     await ui.unmount()
 
-    const band = await $.ui.mount({
-      ...pane,
-      component: 'AbovePrompt',
-      requestId: 'band',
-      props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { bodyRows: 4 } },
-    })
+    const band = await $.ui.mount(BAND)
     expect(await band.find({ type: 'Text', text: /P0 0\/3/ })).toBeDefined()
     await band.unmount()
   })
@@ -366,6 +376,59 @@ describe('plan tracking', () => {
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /^0000001 feat: first$/ })).toBeDefined()
     await ui.unmount()
+  })
+
+  test('on a narrow terminal the band sums up the turn on one line, above the plan, until nothing runs', async ($, on) => {
+    const repo = { ...world(), isNarrow: true }
+    const clock = engine(on, repo)
+    let spawns = 0
+    on('agent.spawn', () => ({ agentId: `a${(spawns += 1)}`, model: 'claude-sonnet-5-5' }) as any)
+    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    const band = await $.ui.mount(BAND)
+    expect(await band.find({ type: 'Text', text: /engine/ })).toBeDefined()
+    expect(await band.find({ type: 'Text', text: /● / })).toBeUndefined()
+
+    await $.prompt.submit({ text: 'map the models' } as any)
+    await clock.advance(500)
+    expect(await band.find({ type: 'Text', text: /^● main  0s  ↑0k ↓0k$/ })).toBeDefined()
+
+    await $.agent.spawn({ subagentType: 'Explore', description: 'one', prompt: 'look' } as any)
+    await $.agent.spawn({ subagentType: 'Explore', description: 'two', prompt: 'look' } as any)
+    await clock.advance(65_000)
+    expect(await band.find({ type: 'Text', text: /^● 2 agents running  1m05s  ↑0k ↓0k$/ })).toBeDefined()
+
+    await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
+    await clock.advance(500)
+    // Whole lines only: the spans inside them match too.
+    const lines = (await band.findAll({ type: 'Text', text: /^(● \d| P0 .*▸)/ })).map(node => node.text)
+    expect(lines).toEqual([expect.stringMatching(/^● 2 agents running/), expect.stringMatching(/^ P0 0\/3  ▸ Register/)])
+
+    await $.turn.complete({ agentId: 'a1', turnId: 't', reason: 'answer', answer: '', usage: null } as any)
+    await clock.advance(500)
+    expect(await band.find({ type: 'Text', text: /^● 1 agent running/ })).toBeDefined()
+
+    await $.turn.complete({ agentId: 'a2', turnId: 't', reason: 'answer', answer: '', usage: null } as any)
+    await $.turn.complete({ turnId: 't', reason: 'answer', answer: 'ok', usage: null } as any)
+    await clock.advance(500)
+    expect(await band.find({ type: 'Text', text: /^● / })).toBeUndefined()
+    expect(await band.find({ type: 'Text', text: /^ P0 0\/3/ })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('while the pane is shown, the band holds no summary', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+    await $.prompt.submit({ text: 'map the models' } as any)
+
+    const band = await $.ui.mount(BAND)
+    await clock.advance(500)
+    expect(await band.find({ type: 'Text', text: /● main/ })).toBeUndefined()
+    await band.unmount()
   })
 
   test('outside a git repository, no commits section and nothing fails', async ($, on) => {

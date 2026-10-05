@@ -63,6 +63,25 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
 }
 
 /**
+ * The band's turn summary on one row, so the prompt never moves: how many
+ * subagents run (`main` when none does), the turn's time, tokens and cost;
+ * null when no agent runs.
+ */
+export function bandRow(agents: AgentRun[], ledger: Ledger, { now, shares }: { now: number; shares: Shares }): Row | null {
+  const running = agents.filter(one => one.status === 'running')
+  const first = running[0]
+  if (first === undefined) return null
+
+  const main = agents.find(one => one.id === MAIN)
+  const subs = running.filter(one => one.parentId !== null).length
+  const turn = turnTotals(agents, ledger, shares)
+  const time = main === undefined ? null : elapsed((main.endedAt ?? now) - main.startedAt)
+  const text = joined([subs === 0 ? 'main' : `${plural(subs, 'agent')} running`, time, spent(turn.usage), cost(turn.cents)], '  ')
+
+  return { key: 'band', indent: 0, spans: [{ text: `${icon(first)} `, color: agentColor(first) }, { text }] }
+}
+
+/**
  * The session's commits, newest first: hash and subject, then size; `✓` when
  * the plan names the subject, `!` when it does not, no mark without a plan.
  * Ends with the branch and its uncommitted paths; nothing outside a repo.
