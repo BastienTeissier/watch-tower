@@ -13,15 +13,13 @@ import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
 import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
-import { gaugeLine, rowLine } from './pane'
+import { companionLines, gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
 import { bandRow, commitRows, totalRows, treeRows } from './rows'
 import type { Press } from './rows'
-import { FRAME_H, FRAME_W, speciesFor } from './species'
-import type { Species } from './species'
-import { BODY_COLOR, DRIFT_COLOR, EYE_COLOR, GAUGE_STALE_MS, eyeGlyph, styleFor } from './style'
-import type { Style } from './style'
+import { speciesFor } from './species'
+import { DRIFT_COLOR, GAUGE_STALE_MS, styleFor } from './style'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
 // literally: the validator reads a state reference only from string literals.
@@ -49,8 +47,6 @@ const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|reve
 // How much of the transcript's end to read for the last response's cache usage.
 const TAIL_BYTES = 1024 * 1024
 
-type Run = { text: string; color: string; isShell: boolean }
-
 const emit = ($: EngineInterface, event: BuddyEvent) =>
   update($, machine, current => push(current, mapEvent(event)))
 
@@ -62,29 +58,6 @@ function toolEvent(e: ToolCallInput): BuddyEvent {
   if (e.tool === 'NotebookEdit') return { kind: 'tool', tool: e.tool, filePath: e.notebook_path }
 
   return { kind: 'tool', tool: String(e.tool) }
-}
-
-/** One frame row as runs of same-coloured cells; spaces join the run before them. */
-function rowRuns(species: Species, style: Style, frame: number, row: number): Run[] {
-  const text = species.frames[frame % species.frames.length]?.[row] ?? ''
-  const runs: Run[] = []
-
-  for (let col = 0; col < FRAME_W; col += 1) {
-    const isEye = row === species.eye[0] && col === species.eye[1]
-    const ch = isEye ? eyeGlyph(style, frame) : (text[col] ?? ' ')
-    const paint = isEye ? EYE_COLOR : species.paint(row, ch)
-    const isShell = paint === 'shell'
-    const color = isShell ? style.shell : paint === 'body' ? BODY_COLOR : paint
-    const last = runs[runs.length - 1]
-
-    if (last !== undefined && (ch === ' ' || (last.color === color && last.isShell === isShell))) {
-      last.text += ch
-    } else {
-      runs.push({ text: ch, color, isShell })
-    }
-  }
-
-  return runs
 }
 
 /** The end of this session's transcript, where the last response is; '' when unreadable. */
@@ -446,7 +419,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { Box, Button, Text } = ui
+    const { Box, Text } = ui
     const { status } = await read($, machine)
     const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
@@ -462,7 +435,6 @@ export const register: Register = (on, options) => {
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
     const style = styleFor(status.code)
-    const isDimmedPulse = style.isPulsing && frame % 2 === 1
     const isStale = sample !== null && now - sample.sampledAt > GAUGE_STALE_MS
     const at = current === null ? null : position(current)
     const rule = '─'.repeat(Math.max(10, Math.min(40, e.props.bodyColumns - 2)))
@@ -502,27 +474,15 @@ export const register: Register = (on, options) => {
         )}
         {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
         {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
-        {hasCompanion && (
-          <Box flexDirection="column">
-            <Text dimColor>{rule}</Text>
-            <Text bold color={style.shell}>
-              {style.name}
-            </Text>
-            {Array.from({ length: FRAME_H }, (_, row) => (
-              <Box>
-                {rowRuns(species, style, frame, row).map(run => (
-                  <Text color={run.color} bold dimColor={run.isShell && isDimmedPulse}>
-                    {run.text}
-                  </Text>
-                ))}
-              </Box>
-            ))}
-            <Text wrap="wrap">{status.msg === '' ? ' ' : status.msg}</Text>
-            {isAlert(status.code) && (
-              <Button key="tap" label="Tap" hotkey="t" onPress={() => update($, machine, clearAlert)} />
-            )}
-          </Box>
-        )}
+        {hasCompanion &&
+          companionLines(ui, {
+            species,
+            style,
+            frame,
+            message: status.msg,
+            rule,
+            onTap: isAlert(status.code) ? () => void update($, machine, clearAlert) : undefined,
+          })}
       </Box>
     )
   })
