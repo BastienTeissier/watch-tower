@@ -3,8 +3,6 @@
 import type { AgentRun } from '../types'
 
 export const MAIN = 'main'
-/** A finished agent stays listed this long. */
-export const SHOW_DONE_MS = 30_000
 /** How many recent actions an agent keeps. */
 const ACTIONS = 5
 
@@ -74,11 +72,6 @@ export function tree(list: AgentRun[]): { run: AgentRun; depth: number }[] {
 
   // Without a main run (before the first prompt), subagents are the roots.
   return ids.has(MAIN) ? rooted : walk(MAIN, 0)
-}
-
-/** Running, or finished less than SHOW_DONE_MS ago. */
-export function isShown(run: AgentRun, now: number): boolean {
-  return run.status === 'running' || (run.endedAt !== null && now - run.endedAt < SHOW_DONE_MS)
 }
 
 /** What the agent is doing now: its latest action. */

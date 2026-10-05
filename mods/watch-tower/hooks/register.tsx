@@ -7,12 +7,13 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
-import { MAIN, agentColor, currentAction, describe, ended, icon, isShown, saw, spawned } from './agents'
+import { MAIN, describe, ended, icon, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
-import { elapsed } from './format'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
+import { treeRows } from './rows'
+import type { Row } from './rows'
 import { VITALS, measured, toolRan, turnEnded, turnStarted, vitalsLine } from './session'
 import { FRAME_H, FRAME_W, speciesFor } from './species'
 import type { Species } from './species'
@@ -279,15 +280,18 @@ export const register: Register = (on, options) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
     await update($, vitals, last => turnStarted(last, now))
+    await update($, agents, list => [mainRun(e.text, now), ...nextTurn(list)])
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
     return next(e)
   })
 
-  // One model request of the main thread: the cache's clock restarts when it ends.
+  // One model request: it names the agent's model; the main thread's restarts the cache's clock.
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
+    const model = result.usage?.model
+    if (model !== undefined) await update($, agents, list => modelSeen(list, e.agentId ?? MAIN, model))
     if (e.agentId === undefined && result.stopReason !== null) {
       const now = await $.clock.now()
       await update($, cache, last => ({ ...last, lastRequestAt: now }))
@@ -302,10 +306,7 @@ export const register: Register = (on, options) => {
 
     await emit($, toolEvent(e))
     await update($, vitals, toolRan)
-    if (e.agentId !== undefined) {
-      const id = e.agentId
-      await update($, agents, list => saw(list, id, describe(e as unknown as Record<string, unknown>)))
-    }
+    await update($, agents, list => saw(list, e.agentId ?? MAIN, describe(e as unknown as Record<string, unknown>)))
     const ran = await next(e)
     await emit($, { kind: 'tool-done' })
     if (e.tool === 'Bash' && HISTORY_COMMANDS.test(e.command)) await refresh($)
@@ -337,7 +338,9 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     const now = await $.clock.now()
+    const isFailed = e.reason === 'error' || e.reason === 'aborted'
     if (e.agentId === undefined) {
+      await update($, agents, all => ended(all, MAIN, isFailed, now, e.reason))
       await emit($, { kind: 'stop' })
       await update($, vitals, last => turnEnded(last, now))
       await refresh($)
@@ -347,7 +350,6 @@ export const register: Register = (on, options) => {
       }
     } else {
       const id = e.agentId
-      const isFailed = e.reason === 'error' || e.reason === 'aborted'
       const list = await update($, agents, all => ended(all, id, isFailed, now, e.reason))
       const one = list.find(run => run.id === id)
       if (one !== undefined) $.ui.toast(`${icon(one)} ${one.description} ${isFailed ? 'failed' : 'done'} (${one.tools} tools)`)
@@ -413,7 +415,7 @@ export const register: Register = (on, options) => {
     const { frame, now } = await read($, tick)
     const current = await read($, plan)
     const live = await read($, vitals)
-    const crew = (await read($, agents)).filter(run => isShown(run, now))
+    const crew = treeRows(await read($, agents), now)
     const repo = await read($, gitState)
     const left = await read($, drift)
     const warm = cachePart(await read($, cache), ttlOverride, now)
@@ -437,8 +439,27 @@ export const register: Register = (on, options) => {
         </Box>
       )
 
+    // The label truncates; the time on the right stays visible.
+    const line = (row: Row) => (
+      <Box key={row.key}>
+        <Box flexGrow={1}>
+          <Text wrap="truncate-end">
+            {'  '.repeat(row.indent)}
+            {row.spans.map((span, at) => (
+              <Text key={at} color={span.color} dimColor={span.isDim}>
+                {span.text}
+              </Text>
+            ))}
+          </Text>
+        </Box>
+        {row.right !== undefined && <Text dimColor>{` ${row.right}`}</Text>}
+      </Box>
+    )
+
     return (
       <Box flexDirection="column" paddingX={1}>
+        {crew.map(line)}
+        {crew.length > 0 && <Text dimColor>{rule}</Text>}
         {gaugeRow('5h', sample?.five ?? null)}
         {gaugeRow('7d', sample?.week ?? null)}
         <Text bold color={style.shell}>
@@ -483,12 +504,6 @@ export const register: Register = (on, options) => {
             {`drift: ${left.files.length} files, ${left.commits.length} commits`}
           </Text>
         )}
-        {crew.map(run => (
-          <Text wrap="truncate-end">
-            <Text color={agentColor(run)}>{`${icon(run)} ${run.description}`}</Text>
-            <Text dimColor>{`  ${elapsed((run.endedAt ?? now) - run.startedAt)} · ${run.tools} tools · ${currentAction(run)}`}</Text>
-          </Text>
-        ))}
       </Box>
     )
   })

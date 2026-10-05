@@ -173,26 +173,33 @@ describe('plan tracking', () => {
     expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toBe('watch-tower: no plan attached.')
   })
 
-  test('subagents are listed with what they last did until shortly after they finish', async ($, on) => {
+  test('the tree shows main and its subagents, finished ones until the next prompt', async ($, on) => {
     const repo = world()
     const clock = engine(on, repo)
     on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }) as any)
     on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
+    await $.prompt.submit({ text: 'map the models' })
     await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
     await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/models.py`, agentId: 'a1' } as any)
 
     const ui = await $.ui.mount(pane)
-    expect(await ui.find({ type: 'Text', text: /● find the models/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /1 tools · reading hse\/models.py/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /● Explore: find the models/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /sonnet-5\.5/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /reading hse\/models\.py/ })).toBeDefined()
 
     await $.turn.complete({ agentId: 'a1', turnId: 't1', reason: 'answer', answer: 'done', usage: null } as any)
-    await clock.advance(500)
-    expect(await ui.find({ type: 'Text', text: /✓ find the models/ })).toBeDefined()
-
     await clock.advance(31_000)
+    expect(await ui.find({ type: 'Text', text: /✓ Explore: find the models/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /reading hse\/models\.py/ })).toBeUndefined()
+
+    await $.prompt.submit({ text: 'next' })
+    await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /find the models/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
     await ui.unmount()
   })
 })
