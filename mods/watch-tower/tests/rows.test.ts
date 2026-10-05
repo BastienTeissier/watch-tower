@@ -44,7 +44,9 @@ describe('treeRows', () => {
   })
 
   test('the expanded agent shows ▾ and its details: cache counts, prompt in three lines, last five actions', () => {
-    let list = [{ ...mainRun('one\ntwo\nthree\nfour', 1, 0), model: 'claude-opus-5-5' }]
+    // A long prompt wraps between words; its blank line is dropped and what does not fit ends in `…`.
+    const prompt = 'Map every event the mod hooks that carries token usage, and list the fields\n\neach one gives, then say which of them the ledger should read first.'
+    let list = [{ ...mainRun(prompt, 1, 0), model: 'claude-opus-5-5' }]
     for (const at of [1, 2, 3, 4, 5, 6]) list = saw(list, 'main', `step ${at}`)
     list = charged(list, 'main', { input: 1_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }, 1)
 
@@ -53,9 +55,9 @@ describe('treeRows', () => {
       '▾ main | 5s',
       '  opus-5.5 · ↑7k ↓2k · $0.42',
       '  cache read 310k · write 6k',
-      '  one',
-      '  two',
-      '  three…',
+      '  Map every event the mod hooks that',
+      '  carries token usage, and list the fields',
+      '  each one gives, then say which of them…',
       '  · step 2',
       '  · step 3',
       '  · step 4',

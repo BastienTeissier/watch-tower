@@ -24,14 +24,27 @@ const cost = (cents: number | null | undefined) => (cents === null || cents === 
 const joined = (parts: (string | null)[], gap: string) => parts.filter(part => part !== null).join(gap)
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
 const PROMPT_LINES = 3
+const PROMPT_COLUMNS = 40
 const ACTIONS = 5
 /** The turn's time: the main thread's, frozen when it ended. */
 const turnTime = (main: AgentRun, now: number) => elapsed((main.endedAt ?? now) - main.startedAt)
 
+/** Text in lines of at most `columns`, broken between words; blank lines dropped, a longer word split. */
+function wrapped(text: string, columns: number): string[] {
+  const lines: string[] = []
+  for (const word of text.split(/\s+/).filter(one => one !== '')) {
+    const last = lines.at(-1)
+    if (last !== undefined && last.length + 1 + word.length <= columns) lines[lines.length - 1] = `${last} ${word}`
+    else for (let at = 0; at < word.length; at += columns) lines.push(word.slice(at, at + columns))
+  }
+
+  return lines
+}
+
 /** An expanded agent's details: model with tokens and cost, cache counts, its prompt in three lines, its last actions. */
 function details(run: AgentRun, model: string, indent: number): Row[] {
   const line = (key: string, text: string): Row => ({ key: `${run.id}:${key}`, indent, spans: [{ text, isDim: true }] })
-  const lines = run.prompt === '' ? [] : run.prompt.split('\n')
+  const lines = wrapped(run.prompt, PROMPT_COLUMNS)
   const isCut = lines.length > PROMPT_LINES
   const prompt = lines.slice(0, PROMPT_LINES).map((text, at) => line(`prompt:${at}`, isCut && at === PROMPT_LINES - 1 ? `${text}…` : text))
 
