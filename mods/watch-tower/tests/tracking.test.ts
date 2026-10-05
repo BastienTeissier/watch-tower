@@ -225,7 +225,7 @@ describe('plan tracking', () => {
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
-    await $.prompt.submit({ text: 'map the models' })
+    await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
     await $.tool.call({ tool: 'Read', file_path: `${CWD}/hse/models.py`, agentId: 'a1' } as any)
 
@@ -240,7 +240,7 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /✓ Explore: find the models/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /reading hse\/models\.py/ })).toBeUndefined()
 
-    await $.prompt.submit({ text: 'next' })
+    await $.prompt.submit({ text: 'next' } as any)
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /find the models/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
@@ -256,7 +256,7 @@ describe('plan tracking', () => {
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
-    await $.prompt.submit({ text: 'map the models' })
+    await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'parent', prompt: 'look' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'child', prompt: 'look', parentAgentId: 'a1' } as any)
 
@@ -275,7 +275,7 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: / 1m05s ↑0k ↓0k$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /●/ })).toBeUndefined()
 
-    await $.prompt.submit({ text: 'next' })
+    await $.prompt.submit({ text: 'next' } as any)
     await $.turn.complete({ turnId: 't2', reason: 'answer', answer: 'ok', usage: null } as any)
     await clock.advance(5_000)
     expect(await ui.find({ type: 'Text', text: /✓ main/ })).toBeDefined()
@@ -295,7 +295,7 @@ describe('plan tracking', () => {
     })
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
-    await $.prompt.submit({ text: 'map the models' })
+    await $.prompt.submit({ text: 'map the models' } as any)
     await $.agent.spawn({ subagentType: 'Explore', description: 'find the models', prompt: 'look' } as any)
     await step($, 'claude-opus-5-5')
     await step($, 'claude-haiku-4-5-20251001', 'a1')
@@ -314,7 +314,7 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /^ctx 42%  ❄ cache 5:00$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /tools 1|turn \d/ })).toBeUndefined()
 
-    await $.prompt.submit({ text: 'next' })
+    await $.prompt.submit({ text: 'next' } as any)
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /Σ turn .* 0 agents  ↑0k ↓0k  \$0\.00/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
@@ -342,7 +342,7 @@ describe('plan tracking', () => {
     await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
     repo.subjects.push('chore(hse): add hse app skeleton', 'b', 'c', 'd', 'e')
     await $.tool.call({ tool: 'Bash', command: 'git commit -m e' })
-    await $.prompt.submit({ text: 'next' })
+    await $.prompt.submit({ text: 'next' } as any)
     await clock.advance(500)
     expect(await ui.find({ type: 'Text', text: /^! 0000007 e$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^✓ 0000003 chore\(hse\): add hse app skeleton$/ })).toBeDefined()
