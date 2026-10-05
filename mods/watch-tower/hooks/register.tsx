@@ -6,15 +6,15 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { AgentRun, Gauge, Phase, Plan, SessionCommits } from '../types'
+import type { AgentRun, Gauge, Plan, SessionCommits } from '../types'
 import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned, subRun } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { MAX_COMMITS, parseLog } from './commits'
-import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
+import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machine'
 import type { BuddyEvent } from './machine'
 import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
 import { companionLines, gaugeLine, rowLine } from './pane'
-import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
+import { editedPath, isOffPlan, parsePlan, planLabel, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
 import { bandRow, commitRows, totalRows, treeRows } from './rows'
 import type { Press } from './rows'
@@ -50,16 +50,6 @@ const TAIL_BYTES = 1024 * 1024
 const emit = ($: EngineInterface, event: BuddyEvent) =>
   update($, machine, current => push(current, mapEvent(event)))
 
-function toolEvent(e: ToolCallInput): BuddyEvent {
-  if (e.tool === 'Bash') return { kind: 'tool', tool: e.tool, command: e.command }
-  if (e.tool === 'Edit' || e.tool === 'Write') {
-    return { kind: 'tool', tool: e.tool, filePath: e.file_path }
-  }
-  if (e.tool === 'NotebookEdit') return { kind: 'tool', tool: e.tool, filePath: e.notebook_path }
-
-  return { kind: 'tool', tool: String(e.tool) }
-}
-
 /** The end of this session's transcript, where the last response is; '' when unreadable. */
 async function readTail($: EngineInterface): Promise<string> {
   try {
@@ -81,8 +71,6 @@ async function readTail($: EngineInterface): Promise<string> {
     return ''
   }
 }
-
-const planLabel = (phase: Phase | null) => phase?.name.replace(/^Phase\s+/i, 'P').replace(/\s+[—–-]\s+.*$/, '') ?? ''
 
 async function git($: EngineInterface, ...args: string[]): Promise<string | null> {
   const ran = await $.process.run(['git', ...args]).catch(() => null)
@@ -176,13 +164,6 @@ async function restore($: EngineInterface): Promise<void> {
   if ((await read($, plan)) !== null) return
   const path = await $.store.get(await storeKey($)).catch(() => undefined)
   if (typeof path === 'string' && (await $.fs.exists(path).catch(() => false))) await attach($, path)
-}
-
-const editedPath = (e: ToolCallInput): string | null => {
-  if (e.tool === 'Edit' || e.tool === 'Write') return e.file_path
-  if (e.tool === 'NotebookEdit') return e.notebook_path
-
-  return null
 }
 
 /** Holds an edit of a file the plan does not list until you allow it; the reason to deny, else undefined. */

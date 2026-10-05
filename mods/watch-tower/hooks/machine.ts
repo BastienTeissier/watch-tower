@@ -1,5 +1,7 @@
 // Buddy state machine. Port of the claude-ble-buddy Bridge (hooks.py, state.py):
 // same state codes, same event mapping, same alert memory.
+import type { ToolCallInput } from 'claude-code'
+
 import type { Machine, Status } from '../types'
 
 export const STATE = {
@@ -26,6 +28,17 @@ export type BuddyEvent =
   | { kind: 'stop' }
   | { kind: 'permission'; message: string }
   | { kind: 'notification'; message: string }
+
+/** The machine's event for a tool call: the command of a shell, the file of an edit. */
+export function toolEvent(e: ToolCallInput): BuddyEvent {
+  if (e.tool === 'Bash') return { kind: 'tool', tool: e.tool, command: e.command }
+  if (e.tool === 'Edit' || e.tool === 'Write') {
+    return { kind: 'tool', tool: e.tool, filePath: e.file_path }
+  }
+  if (e.tool === 'NotebookEdit') return { kind: 'tool', tool: e.tool, filePath: e.notebook_path }
+
+  return { kind: 'tool', tool: String(e.tool) }
+}
 
 export const INITIAL: Machine = {
   status: { code: STATE.IDLE, msg: '' },
