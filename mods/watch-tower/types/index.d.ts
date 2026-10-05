@@ -59,6 +59,9 @@ export type Git = { branch: string; dirty: number }
 /** One commit of the session: short hash, subject, and its size. */
 export type Commit = { hash: string; subject: string; files: number; added: number; removed: number }
 
+/** The newest commits of the session, and how many it holds in all. */
+export type SessionCommits = { list: Commit[]; total: number }
+
 /** What left the plan: edited files no task lists, commit subjects no task names. */
 export type Drift = { files: string[]; commits: string[] }
 
@@ -79,7 +82,7 @@ declare module 'claude-code' {
       git: Git | null
       /** HEAD when the session started; commits after it are the session's. */
       sessionBase: string | null
-      commits: Commit[]
+      commits: SessionCommits
       drift: Drift
       allowed: string[]
       cache: Cache

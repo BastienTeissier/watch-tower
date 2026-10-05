@@ -2,8 +2,9 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { charged, ended, mainRun, saw, spawned } from '../hooks/agents'
 import { elapsed, shortModel, tokens, usd } from '../hooks/format'
+import { parseLog } from '../hooks/commits'
 import { LEDGER, agentCounted, billed, measured, toolCounted, turnBegan } from '../hooks/ledger'
-import { totalRows, treeRows } from '../hooks/rows'
+import { commitRows, totalRows, treeRows } from '../hooks/rows'
 import type { Row } from '../hooks/rows'
 
 const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}${row.right === undefined ? '' : ` | ${row.right}`}`
@@ -68,6 +69,29 @@ describe('totalRows', () => {
 
   test('before the first clock tick, the session time reads 0s, never negative', () => {
     expect(totalRows([], { ...LEDGER, startedAt: 5_000 }, { now: 0, shares: null }).map(text)[0]).toBe('Σ session  0s  0 agents  0 tools')
+  })
+})
+
+describe('commitRows', () => {
+  const git = { branch: 'main', dirty: 2 }
+  const list = parseLog(['a1a1a1a\tfeat: one', ' 1 file changed, 3 insertions(+)', 'b2b2b2b\tfix: two', ' 2 files changed, 1 deletion(-)'].join('\n'))
+
+  test('lists the commits it holds, counts the rest of the session, then the branch', () => {
+    expect(commitRows(git, { list, total: 7 }, null).map(text)).toEqual([
+      'commits',
+      'a1a1a1a feat: one',
+      '    1 file +3 −0',
+      'b2b2b2b fix: two',
+      '    2 files +0 −1',
+      '+5 earlier',
+      'main  ±2 uncommitted',
+    ])
+  })
+
+  test('no earlier line when every commit is shown; the branch alone when there are none', () => {
+    expect(commitRows(git, { list, total: 2 }, null).map(text)).not.toContain('+0 earlier')
+    expect(commitRows(git, { list: [], total: 0 }, null).map(text)).toEqual(['main  ±2 uncommitted'])
+    expect(commitRows(null, { list, total: 2 }, null)).toEqual([])
   })
 })
 

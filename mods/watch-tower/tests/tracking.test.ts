@@ -15,15 +15,41 @@ const pane = {
   props: { title: 'Watch Tower', isFocused: false, bodyColumns: 60, placement: 'dock' },
 } as any
 
-/** A fake repo: the plan file, a git log the test appends to (oldest first), and the user's answer to the guard. */
-type World = { files: Record<string, string>; subjects: string[]; isRepo: boolean; answer: string; asked: string[]; opened: { id: string; title?: string }[] }
+/**
+ * A fake repo: the plan file, a git log the test appends to (oldest first),
+ * the git commands run, and the user's answer to the guard.
+ */
+type World = {
+  files: Record<string, string>
+  subjects: string[]
+  isRepo: boolean
+  runs: string[][]
+  answer: string
+  asked: string[]
+  opened: { id: string; title?: string }[]
+}
 
-/** `git log --shortstat` of the subjects, newest first, each commit one file and two lines added. */
-const shortstat = (subjects: string[]) =>
-  subjects
-    .map((subject, at) => `${(at + 1).toString(16).padStart(7, '0')}\t${subject}\n\n 1 file changed, 2 insertions(+)`)
-    .reverse()
-    .join('\n')
+/** The hash of the commit at `at` in the log; `base0` stands before the first one. */
+const hashOf = (at: number) => (at + 1).toString(16).padStart(7, '0')
+
+/** What `git <argv>` prints: `base..HEAD` ranges, `-n`, `rev-list --count` and `--shortstat` are honoured. */
+function gitOut(world: World, argv: string[]): string {
+  const [sub, flag] = argv
+  const head = world.subjects.length === 0 ? 'base0' : hashOf(world.subjects.length - 1)
+  if (sub === 'rev-parse') return flag === '--abbrev-ref' ? 'feat/msv' : head
+
+  const base = argv.find(arg => arg.endsWith('..HEAD'))?.slice(0, -'..HEAD'.length)
+  const from = base === undefined || base === 'base0' ? 0 : world.subjects.findIndex((_, at) => hashOf(at) === base) + 1
+  const range = world.subjects.map((subject, at) => ({ subject, hash: hashOf(at) })).slice(from)
+  if (sub === 'rev-list') return String(range.length)
+  if (sub !== 'log') return ''
+
+  const n = argv.indexOf('-n')
+  const newest = range.reverse().slice(0, n === -1 ? undefined : Number(argv[n + 1]))
+  if (!argv.includes('--shortstat')) return newest.map(commit => commit.subject).join('\n')
+
+  return newest.map(commit => `${commit.hash}\t${commit.subject}\n\n 1 file changed, 2 insertions(+)`).join('\n')
+}
 
 // The engine hands the hooks absolute paths: a fake file is found by its tail.
 const fileKey = (world: World, path: string) => Object.keys(world.files).find(key => path.endsWith(key))
@@ -57,9 +83,9 @@ function engine(on: On, world: World) {
   })
   on('fs.exists', ($, e) => ({ value: fileKey(world, e.path) !== undefined }) as any)
   on('process.run', ($, e) => {
-    const [, sub, flag] = e.argv
-    const log = e.argv.includes('--shortstat') ? shortstat(world.subjects) : world.subjects.join('\n')
-    const stdout = sub === 'rev-parse' && flag === '--abbrev-ref' ? 'feat/msv' : sub === 'rev-parse' ? 'base0' : sub === 'log' ? log : ''
+    const argv = e.argv.slice(1)
+    world.runs.push(argv)
+    const stdout = world.isRepo ? gitOut(world, argv) : ''
 
     return { value: { exitCode: world.isRepo ? 0 : 128, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as any
   })
@@ -87,7 +113,7 @@ async function step($: any, model: string, agentId?: string) {
 
 const USAGE = { input_tokens: 4_000, output_tokens: 8_000, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 50_000 }
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, answer: 'Deny', asked: [], opened: [] })
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, runs: [], answer: 'Deny', asked: [], opened: [] })
 
 describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
@@ -296,6 +322,7 @@ describe('plan tracking', () => {
     const repo = world()
     const clock = engine(on, repo)
     on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    repo.subjects.push('chore: before the session')
     await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
 
     const ui = await $.ui.mount(pane)
@@ -305,18 +332,23 @@ describe('plan tracking', () => {
     repo.subjects.push('wip: scratch')
     await $.tool.call({ tool: 'Bash', command: 'git commit -m "wip: scratch"' })
     await clock.advance(500)
-    expect(await ui.find({ type: 'Text', text: /^0000001 wip: scratch$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^0000002 wip: scratch$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^ {4}1 file \+2 −0$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /before the session/ })).toBeUndefined()
 
     await $.command.run({ command: 'watch-tower', args: `plan ${PLAN}` } as any)
     repo.subjects.push('chore(hse): add hse app skeleton', 'b', 'c', 'd', 'e')
     await $.tool.call({ tool: 'Bash', command: 'git commit -m e' })
     await $.prompt.submit({ text: 'next' })
     await clock.advance(500)
-    expect(await ui.find({ type: 'Text', text: /^! 0000006 e$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^✓ 0000002 chore\(hse\): add hse app skeleton$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^! 0000007 e$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^✓ 0000003 chore\(hse\): add hse app skeleton$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /wip: scratch/ })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /^\+1 earlier$/ })).toBeDefined()
+    // Only the shown commits are diffed, along the first parent: a merge counts once.
+    expect(repo.runs.filter(argv => argv.includes('--shortstat')).at(-1)).toEqual(
+      expect.arrayContaining(['-n', '5', '--first-parent', '0000001..HEAD']),
+    )
     await ui.unmount()
   })
 

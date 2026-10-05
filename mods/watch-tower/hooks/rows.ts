@@ -1,14 +1,10 @@
 // What the pane shows, as data: register.tsx maps each Row to elements.
-import type { AgentRun, Commit, Git, Ledger, Plan, Usage } from '../types'
+import type { AgentRun, Git, Ledger, Plan, SessionCommits, Usage } from '../types'
 import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
-import { shown } from './commits'
 import { elapsed, shortModel, tokens, usd } from './format'
 import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
 import type { Shares } from './ledger'
 import { unplanned } from './plan'
-
-/** How many commits the pane lists before counting the rest. */
-const COMMITS = 5
 const DRIFT_COLOR = '#ff8c28'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
@@ -71,9 +67,9 @@ export function totalRows(agents: AgentRun[], ledger: Ledger, { now, shares }: {
  * the plan names the subject, `!` when it does not, no mark without a plan.
  * Ends with the branch and its uncommitted paths; nothing outside a repo.
  */
-export function commitRows(git: Git | null, commits: Commit[], plan: Plan | null): Row[] {
+export function commitRows(git: Git | null, { list, total }: SessionCommits, plan: Plan | null): Row[] {
   if (git === null) return []
-  const { list, earlier } = shown(commits, COMMITS)
+  const earlier = total - list.length
   const line = (key: string, text: string, indent = 0): Row => ({ key, indent, spans: [{ text, isDim: true }] })
   const rows = list.flatMap(commit => {
     const isOff = plan !== null && unplanned(plan, [commit.subject]).length > 0

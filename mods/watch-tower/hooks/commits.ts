@@ -1,6 +1,9 @@
 // The session's commits, pure: parsed from `git log --format=%h%x09%s --shortstat`.
 import type { Commit } from '../types'
 
+/** How many commits the pane lists; the log asks for no more, the rest are only counted. */
+export const MAX_COMMITS = 5
+
 const HEAD = /^([0-9a-f]{4,})\t(.*)$/
 const STAT = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/
 
@@ -22,9 +25,4 @@ export function parseLog(stdout: string): Commit[] {
   }
 
   return commits
-}
-
-/** The newest `max` commits, and how many earlier ones are left out. */
-export function shown(commits: Commit[], max: number): { list: Commit[]; earlier: number } {
-  return { list: commits.slice(0, max), earlier: Math.max(0, commits.length - max) }
 }

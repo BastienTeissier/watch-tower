@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { parseLog, shown } from '../hooks/commits'
+import { parseLog } from '../hooks/commits'
 
 const LOG = [
   'e41c7a2\tfeat(watch-tower): add companion toggle',
@@ -28,14 +28,5 @@ describe('parseLog', () => {
   test('a subject with a tab keeps it; no output, no commit', () => {
     expect(parseLog('abc1234\tfix:\tthing')[0]?.subject).toBe('fix:\tthing')
     expect(parseLog('')).toEqual([])
-  })
-})
-
-describe('shown', () => {
-  test('caps the list and counts the earlier ones', () => {
-    const commits = parseLog(LOG)
-
-    expect(shown(commits, 2)).toEqual({ list: commits.slice(0, 2), earlier: 2 })
-    expect(shown(commits, 5)).toEqual({ list: commits, earlier: 0 })
   })
 })

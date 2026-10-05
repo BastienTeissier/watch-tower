@@ -6,10 +6,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { AgentRun, Commit, Gauge, Phase, Plan } from '../types'
+import type { AgentRun, Gauge, Phase, Plan, SessionCommits } from '../types'
 import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned, subRun } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
-import { parseLog } from './commits'
+import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
 import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
@@ -39,7 +39,7 @@ const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as Age
 const ledger = atom({ plugin: 'watch-tower', key: 'ledger' } as const, LEDGER)
 const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
 const sessionBase = atom({ plugin: 'watch-tower', key: 'sessionBase' } as const, null)
-const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, [] as Commit[])
+const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, { list: [], total: 0 } as SessionCommits)
 const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
 const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
@@ -143,11 +143,14 @@ async function refresh($: EngineInterface): Promise<void> {
   const current = await read($, plan)
   const branch = await git($, 'rev-parse', '--abbrev-ref', 'HEAD')
   const dirty = lines(await git($, 'status', '--porcelain')).length
+  // First parent only: a merge counts once, with its size, not as every commit it brought in.
   const base = await read($, sessionBase)
-  const log = base === null ? null : await git($, 'log', '--format=%h%x09%s', '--shortstat', `${base}..HEAD`)
+  const range = `${base}..HEAD`
+  const log = base === null ? null : await git($, 'log', '--first-parent', '-n', String(MAX_COMMITS), '--format=%h%x09%s', '--shortstat', range)
+  const total = base === null ? 0 : Number((await git($, 'rev-list', '--first-parent', '--count', range)) ?? 0)
 
   await update($, gitState, () => (branch === null ? null : { branch, dirty }))
-  await update($, commits, () => parseLog(log ?? ''))
+  await update($, commits, () => ({ list: parseLog(log ?? ''), total }))
   if (current === null) return
 
   const since = current.base == null ? [] : lines(await git($, 'log', '--format=%s', `${current.base}..HEAD`))
