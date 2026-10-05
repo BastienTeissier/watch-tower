@@ -202,4 +202,40 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /● main/ })).toBeDefined()
     await ui.unmount()
   })
+
+  test('a child sits under its parent, timers run, main freezes when its turn ends or is interrupted', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    let spawns = 0
+    on('agent.spawn', () => ({ agentId: `a${(spawns += 1)}`, model: 'claude-sonnet-5-5' }) as any)
+    on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
+    on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+    await $.session.start({ surface: 'terminal', cwd: CWD, isInteractive: true })
+
+    await $.prompt.submit({ text: 'map the models' })
+    await $.agent.spawn({ subagentType: 'Explore', description: 'parent', prompt: 'look' } as any)
+    await $.agent.spawn({ subagentType: 'Explore', description: 'child', prompt: 'look', parentAgentId: 'a1' } as any)
+
+    const ui = await $.ui.mount(pane)
+    expect(await ui.find({ type: 'Text', text: /^ {2}● Explore: parent/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^ {4}● Explore: child/ })).toBeDefined()
+
+    await clock.advance(65_000)
+    expect(await ui.find({ type: 'Text', text: / 1m05s$/ })).toBeDefined()
+
+    // Esc on the main thread: its foreground subagents end with it, and its time stops.
+    await $.turn.complete({ turnId: 't1', reason: 'aborted', answer: '', usage: null } as any)
+    await clock.advance(10_000)
+    expect(await ui.find({ type: 'Text', text: /✗ main/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /✗ Explore: child/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: / 1m05s$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /●/ })).toBeUndefined()
+
+    await $.prompt.submit({ text: 'next' })
+    await $.turn.complete({ turnId: 't2', reason: 'answer', answer: 'ok', usage: null } as any)
+    await clock.advance(5_000)
+    expect(await ui.find({ type: 'Text', text: /✓ main/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: / 0s$/ })).toBeDefined()
+    await ui.unmount()
+  })
 })
