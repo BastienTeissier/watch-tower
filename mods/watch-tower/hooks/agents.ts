@@ -28,6 +28,15 @@ export function mainRun(prompt: string, turn: number, now: number): AgentRun {
   }
 }
 
+/** A subagent's run as it spawns, under `parentId`, in prompt number `turn`. */
+export function subRun(
+  spawn: Pick<AgentRun, 'id' | 'parentId' | 'description' | 'type' | 'model' | 'prompt' | 'isBackground'>,
+  turn: number,
+  now: number,
+): AgentRun {
+  return { ...mainRun(spawn.prompt, turn, now), ...spawn }
+}
+
 /** A new prompt: finished agents and the old main run leave, running background agents stay. */
 export function nextTurn(list: AgentRun[]): AgentRun[] {
   return list.filter(one => one.id !== MAIN && one.status === 'running')

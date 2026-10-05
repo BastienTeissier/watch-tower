@@ -7,11 +7,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { AgentRun, Gauge, Phase, Plan } from '../types'
-import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned } from './agents'
+import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned, subRun } from './agents'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { INITIAL, clearAlert, isAlert, mapEvent, push } from './machine'
 import type { BuddyEvent } from './machine'
-import { LEDGER, NO_USAGE, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
+import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
 import { gaugeLine, rowLine } from './pane'
 import { isOffPlan, parsePlan, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
@@ -317,23 +317,19 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const spawn = await next(e)
     if (spawn.agentId !== undefined) {
-      const run: AgentRun = {
-        id: spawn.agentId,
-        parentId: e.parentAgentId ?? MAIN,
-        description: e.description,
-        type: e.subagentType,
-        model: spawn.model,
-        prompt: e.prompt,
-        isBackground: e.background,
-        status: 'running',
-        startedAt: await $.clock.now(),
-        endedAt: null,
-        tools: 0,
-        actions: [],
-        turn: (await read($, ledger)).turn,
-        usage: NO_USAGE,
-        weight: 0,
-      }
+      const run = subRun(
+        {
+          id: spawn.agentId,
+          parentId: e.parentAgentId ?? MAIN,
+          description: e.description,
+          type: e.subagentType,
+          model: spawn.model,
+          prompt: e.prompt,
+          isBackground: e.background,
+        },
+        (await read($, ledger)).turn,
+        await $.clock.now(),
+      )
       await update($, agents, list => spawned(list, run))
       await update($, ledger, agentCounted)
     }
