@@ -65,6 +65,10 @@ describe('totalRows', () => {
   test('before any prompt, Σ session alone, with no cost when none is reported', () => {
     expect(totalRows([], LEDGER, { now: 5_000, shares: null }).map(text)).toEqual(['Σ session  5s  0 agents  0 tools', '           ↑0k ↓0k'])
   })
+
+  test('before the first clock tick, the session time reads 0s, never negative', () => {
+    expect(totalRows([], { ...LEDGER, startedAt: 5_000 }, { now: 0, shares: null }).map(text)[0]).toBe('Σ session  0s  0 agents  0 tools')
+  })
 })
 
 describe('format', () => {
