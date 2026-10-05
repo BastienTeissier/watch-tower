@@ -1,0 +1,26 @@
+{
+  "name": "buddy",
+  "version": "0.1.0",
+  "author": { "name": "BastienTeissier" },
+  "description": "On-screen Claude Buddy: an ASCII companion pane mirroring what Claude is doing, with quota gauges, plan position, session vitals, subagents and the prompt cache countdown",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "species": {
+      "type": "string",
+      "title": "Species",
+      "description": "ASCII silhouette the Buddy takes",
+      "default": "snail",
+      "options": [
+        "snail", "duck", "goose", "blob", "cat", "dragon", "octopus", "owl", "penguin",
+        "turtle", "ghost", "axolotl", "capybara", "cactus", "robot", "rabbit", "mushroom", "chonk"
+      ]
+    },
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache lifetime",
+      "description": "auto detects 5m or 1h from the last response; 5m or 1h forces it",
+      "default": "auto",
+      "options": ["auto", "5m", "1h"]
+    }
+  }
+}
