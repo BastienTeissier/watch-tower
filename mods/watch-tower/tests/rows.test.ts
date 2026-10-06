@@ -6,7 +6,8 @@ import { parseLog } from '../hooks/commits'
 import { LEDGER } from '../hooks/ledger'
 import { bandRow, commitRows, totalRows, treeRows } from '../hooks/rows'
 import type { Row } from '../hooks/rows'
-import type { AgentRun } from '../types'
+import { TRACK } from '../hooks/track'
+import type { AgentRun, Commit, Git } from '../types'
 
 const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}${row.right === undefined ? '' : ` | ${row.right}`}`
 
@@ -137,10 +138,11 @@ describe('bandRow', () => {
 
 describe('commitRows', () => {
   const git = { branch: 'main', dirty: 2 }
+  const rows = (list: Commit[], total: number, at: Git | null = git) => commitRows({ ...TRACK, git: at, commits: { list, total } })
   const list = parseLog(['a1a1a1a\tfeat: one', ' 1 file changed, 3 insertions(+)', 'b2b2b2b\tfix: two', ' 2 files changed, 1 deletion(-)'].join('\n'))
 
   test('lists the commits it holds, counts the rest of the session, then the branch', () => {
-    expect(commitRows(git, { list, total: 7 }, null).map(text)).toEqual([
+    expect(rows(list, 7).map(text)).toEqual([
       'commits',
       'a1a1a1a feat: one',
       '    1 file +3 −0',
@@ -152,9 +154,9 @@ describe('commitRows', () => {
   })
 
   test('no earlier line when every commit is shown; the branch alone when there are none', () => {
-    expect(commitRows(git, { list, total: 2 }, null).map(text)).not.toContain('+0 earlier')
-    expect(commitRows(git, { list: [], total: 0 }, null).map(text)).toEqual(['main  ±2 uncommitted'])
-    expect(commitRows(null, { list, total: 2 }, null)).toEqual([])
+    expect(rows(list, 2).map(text)).not.toContain('+0 earlier')
+    expect(rows([], 0).map(text)).toEqual(['main  ±2 uncommitted'])
+    expect(rows(list, 2, null)).toEqual([])
   })
 })
 

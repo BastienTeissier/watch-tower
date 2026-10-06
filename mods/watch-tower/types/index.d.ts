@@ -68,6 +68,21 @@ export type SessionCommits = { list: Commit[]; total: number }
 /** What left the plan: edited files no task lists, commit subjects no task names. */
 export type Drift = { files: string[]; commits: string[] }
 
+/**
+ * The session's track: git state, its commits, the attached plan and what
+ * drifted from it. `sessionBase` is HEAD when the session started, `''` on a
+ * branch with no commit yet: commits after it are the session's. `allowed`
+ * holds the files let through off the plan.
+ */
+export type Track = {
+  git: Git | null
+  sessionBase: string | null
+  commits: SessionCommits
+  plan: Plan | null
+  drift: Drift
+  allowed: string[]
+}
+
 export type CacheTtl = '5m' | '1h'
 
 /** The prompt cache's clock: when the main thread's last request ended, and the lifetime it wrote with. */
@@ -79,16 +94,10 @@ declare module 'claude-code' {
       machine: Machine
       gauges: Gauges | null
       tick: Tick
-      plan: Plan | null
       books: Books
-      git: Git | null
-      /** HEAD when the session started, `''` on a branch with no commit yet; commits after it are the session's. */
-      sessionBase: string | null
-      commits: SessionCommits
-      drift: Drift
+      track: Track
       /** The agent whose details are open in the tree, null when none. */
       expanded: string | null
-      allowed: string[]
       cache: Cache
     }
   }

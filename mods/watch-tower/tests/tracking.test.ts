@@ -59,7 +59,8 @@ function gitOut(world: World, argv: string[]): string {
 // The engine hands the hooks absolute paths: a fake file is found by its tail.
 const fileKey = (world: World, path: string) => Object.keys(world.files).find(key => path.endsWith(key))
 
-function engine(on: On, world: World) {
+/** `stored` seeds the store, as an earlier session left it. */
+function engine(on: On, world: World, stored: Record<string, string> = {}) {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }) as any)
   on('command.register', () => ({ value: {} }) as any)
@@ -113,7 +114,7 @@ function engine(on: On, world: World) {
   })
   on('prompt.submit', ($, e) => ({ text: e.text }) as any)
   on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
-  mock.store(on)
+  mock.store(on, stored)
   mock.env(on, { HOME: '/home/me' })
 
   return mock.clock(on, { now: NOW })
@@ -258,6 +259,15 @@ describe('plan tracking', () => {
 
     expect((await $.command.run({ command: 'watch-tower', args: 'plan off' } as any)).text).toBe('watch-tower: plan detached.')
     expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toBe('watch-tower: no plan attached.')
+  })
+
+  test('a new session takes the plan its branch had back from the store and reads git once', async ($, on) => {
+    const repo = world()
+    engine(on, repo, { [`plan:${CWD}:feat/msv`]: PLAN })
+    await start($)
+
+    expect((await $.command.run({ command: 'watch-tower', args: 'plan' } as any)).text).toContain('now: Register')
+    expect(repo.runs.filter(argv => argv.includes('--shortstat'))).toHaveLength(1)
   })
 
   test('the tree shows main and its subagents, finished ones until the next prompt', async ($, on) => {

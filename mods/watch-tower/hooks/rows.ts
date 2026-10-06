@@ -1,11 +1,11 @@
 // What the pane shows, as data: register.tsx maps each Row to elements.
-import type { AgentRun, Git, Ledger, Plan, SessionCommits, Usage } from '../types'
+import type { AgentRun, Ledger, Track, Usage } from '../types'
 import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
 import { elapsed, shortModel, tokens, usd } from './format'
 import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
 import type { Shares } from './ledger'
-import { unplanned } from './plan'
 import { DRIFT_COLOR } from './style'
+import { commitMark } from './track'
 
 export type Span = { text: string; color?: string; isDim?: boolean }
 
@@ -125,16 +125,19 @@ export function bandRow(agents: AgentRun[], ledger: Ledger, { now, shares }: { n
 
 /**
  * The session's commits, newest first: hash and subject, then size; `✓` when
- * the plan names the subject, `!` when it does not, no mark without a plan.
- * Ends with the branch and its uncommitted paths; nothing outside a repo.
+ * the plan names the subject, `!` when it drifted from the plan, no mark
+ * without a plan or before it. Ends with the branch and its uncommitted
+ * paths; nothing outside a repo.
  */
-export function commitRows(git: Git | null, { list, total }: SessionCommits, plan: Plan | null): Row[] {
+export function commitRows(track: Track): Row[] {
+  const { git, commits: { list, total } } = track
   if (git === null) return []
   const earlier = total - list.length
   const line = (key: string, text: string, indent = 0): Row => ({ key, indent, spans: [{ text, isDim: true }] })
   const rows = list.flatMap(commit => {
-    const isOff = plan !== null && unplanned(plan, [commit.subject]).length > 0
-    const mark = plan === null ? '' : isOff ? '! ' : '✓ '
+    const at = commitMark(track, commit.subject)
+    const isOff = at === 'drift'
+    const mark = at === null ? '' : isOff ? '! ' : '✓ '
     const text = `${mark}${commit.hash} ${commit.subject}`
     const head: Row = { key: `commit:${commit.hash}`, indent: 0, spans: [isOff ? { text, color: DRIFT_COLOR } : { text }] }
 

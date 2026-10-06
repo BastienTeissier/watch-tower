@@ -1,12 +1,12 @@
 // Watch Tower as a mod: wiring only. Session events drive the state machine
 // (machine.ts), a pane draws the active Species in the state's style, the
-// attached plan's position (plan.ts), the agent tree with its tokens and cost
+// attached plan's position and drift (track.ts), the agent tree with its tokens and cost
 // (books.ts) and the prompt cache's countdown. Everything reaching `$` is in this file: the
 // validator follows `$` into no import.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { Gauge, Plan, SessionCommits } from '../types'
+import type { Gauge, Plan } from '../types'
 import { MAIN, describe, icon, label } from './agents'
 import { BOOKS, ended, measured, opened, prompted, requested, spawned, toolUsed } from './books'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
@@ -15,12 +15,13 @@ import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machi
 import type { BuddyEvent } from './machine'
 import { shares, usageOf } from './ledger'
 import { companionLines, gaugeLine, rowLine } from './pane'
-import { editedPath, isOffPlan, parsePlan, planLabel, position, relativeTo, tickCommits, unplanned } from './plan'
+import { editedPath, parsePlan, planLabel, position, relativeTo, tickCommits } from './plan'
 import { weightOf } from './pricing'
 import { bandRow, commitRows, totalRows, treeRows } from './rows'
 import type { Press } from './rows'
 import { speciesFor } from './species'
 import { DRIFT_COLOR, GAUGE_STALE_MS, styleFor } from './style'
+import { TRACK, attached, began, detached, edited, holds, observed } from './track'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
 // literally: the validator reads a state reference only from string literals.
@@ -34,14 +35,9 @@ const LOG_DEPTH = '200'
 const machine = atom({ plugin: 'watch-tower', key: 'machine' } as const, INITIAL)
 const gauges = atom({ plugin: 'watch-tower', key: 'gauges' } as const, null)
 const tick = atom({ plugin: 'watch-tower', key: 'tick' } as const, { frame: 0, now: 0 })
-const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
 const books = atom({ plugin: 'watch-tower', key: 'books' } as const, BOOKS)
-const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
-const sessionBase = atom({ plugin: 'watch-tower', key: 'sessionBase' } as const, null)
-const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, { list: [], total: 0 } as SessionCommits)
-const drift = atom({ plugin: 'watch-tower', key: 'drift' } as const, { files: [], commits: [] })
+const track = atom({ plugin: 'watch-tower', key: 'track' } as const, TRACK)
 const expanded = atom({ plugin: 'watch-tower', key: 'expanded' } as const, null as string | null)
-const allowed = atom({ plugin: 'watch-tower', key: 'allowed' } as const, [] as string[])
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
 const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|revert|checkout|switch)\b/
 // How much of the transcript's end to read for the last response's cache usage.
@@ -110,68 +106,67 @@ async function summaryRow($: EngineInterface, now: number) {
 
 /** Re-reads the plan and the commit logs, and takes the git state. */
 async function refresh($: EngineInterface): Promise<void> {
-  const current = await read($, plan)
+  const { plan: current, sessionBase: base } = await read($, track)
   const branch = await git($, 'rev-parse', '--abbrev-ref', 'HEAD')
   const dirty = lines(await git($, 'status', '--porcelain')).length
   // First parent only: a merge counts once, with its size, not as every commit it brought in.
-  const base = await read($, sessionBase)
   const range = base === '' ? 'HEAD' : `${base}..HEAD`
   const log = base === null ? null : await git($, 'log', '--first-parent', '-n', String(MAX_COMMITS), '--format=%h%x09%s', '--shortstat', range)
   const total = base === null ? 0 : Number((await git($, 'rev-list', '--first-parent', '--count', range)) ?? 0)
 
-  await update($, gitState, () => (branch === null ? null : { branch, dirty }))
-  await update($, commits, () => ({ list: parseLog(log ?? ''), total }))
-  if (current === null) return
-
-  const since = current.base == null ? [] : lines(await git($, 'log', '--format=%s', `${current.base}..HEAD`))
-  const loaded = await load($, current.path, current.base).catch(() => null)
-  if (loaded !== null) await update($, plan, () => loaded)
-  await update($, drift, last => ({ ...last, commits: unplanned(loaded ?? current, since) }))
+  const since = current?.base == null ? [] : lines(await git($, 'log', '--format=%s', `${current.base}..HEAD`))
+  const loaded = current === null ? null : await load($, current.path, current.base).catch(() => null)
+  const facts = { git: branch === null ? null : { branch, dirty }, commits: { list: parseLog(log ?? ''), total }, plan: loaded, since }
+  await update($, track, last => observed(last, facts))
 }
 
-/** Attaches the plan at `path` (relative to the working directory) and remembers it for this branch. */
+/** Loads the plan at `path` and attaches it for this branch, without looking at git; why it cannot, else null. */
+async function take($: EngineInterface, path: string): Promise<string | null> {
+  const loaded = await load($, path, await git($, 'rev-parse', 'HEAD')).catch(() => null)
+  if (loaded === null) return `${NAME}: cannot read ${path}.`
+  if (loaded.phases.length === 0) return `${NAME}: no checkbox tasks found in ${path}.`
+
+  await update($, track, last => attached(last, loaded))
+  await $.store.set(await storeKey($), path).catch(() => undefined)
+
+  return null
+}
+
+/** Attaches the plan at `path` (relative to the working directory), or looks again at the one attached there. */
 async function attach($: EngineInterface, path: string): Promise<string> {
   const clean = path.replace(/^@/, '')
-  const current = await read($, plan)
-  if (current?.path === clean) {
-    await refresh($)
-
-    return describePosition((await read($, plan)) ?? current)
+  if ((await read($, track)).plan?.path !== clean) {
+    const refused = await take($, clean)
+    if (refused !== null) return refused
   }
-  const loaded = await load($, clean, await git($, 'rev-parse', 'HEAD')).catch(() => null)
-  if (loaded === null) return `${NAME}: cannot read ${clean}.`
-  if (loaded.phases.length === 0) return `${NAME}: no checkbox tasks found in ${clean}.`
-
-  await update($, plan, () => loaded)
-  await update($, drift, () => ({ files: [], commits: [] }))
-  await update($, allowed, () => [])
-  await $.store.set(await storeKey($), clean).catch(() => undefined)
   await refresh($)
+  const { plan: current } = await read($, track)
 
-  return describePosition(loaded)
+  return current === null ? `${NAME}: plan detached.` : describePosition(current)
 }
 
 async function detach($: EngineInterface): Promise<string> {
-  await update($, plan, () => null)
+  await update($, track, detached)
   await $.store.delete(await storeKey($)).catch(() => undefined)
 
   return `${NAME}: plan detached.`
 }
 
-/** Re-attaches the plan this branch had last time, when its file is still there. */
+/** Re-attaches the plan this branch had last time, when its file is still there; the caller looks at git. */
 async function restore($: EngineInterface): Promise<void> {
-  if ((await read($, plan)) !== null) return
+  if ((await read($, track)).plan !== null) return
   const path = await $.store.get(await storeKey($)).catch(() => undefined)
-  if (typeof path === 'string' && (await $.fs.exists(path).catch(() => false))) await attach($, path)
+  if (typeof path === 'string' && (await $.fs.exists(path).catch(() => false))) await take($, path)
 }
 
 /** Holds an edit of a file the plan does not list until you allow it; the reason to deny, else undefined. */
 async function guard($: EngineInterface, e: ToolCallInput): Promise<string | undefined> {
-  const current = await read($, plan)
+  const tracked = await read($, track)
+  const current = tracked.plan
   const path = editedPath(e)
   if (current === null || path === null) return undefined
   const rel = relativeTo(await $.session.cwd(), path)
-  if (rel === null || !isOffPlan(current, rel) || (await read($, allowed)).includes(rel)) return undefined
+  if (rel === null || !holds(tracked, rel)) return undefined
 
   const at = position(current)
   const answer = await $.ui
@@ -184,8 +179,7 @@ async function guard($: EngineInterface, e: ToolCallInput): Promise<string | und
   if (answer === 'Deny') {
     return `${NAME}: ${rel} is not listed in the plan (${current.path}) and the user declined this edit. Current task: ${at.current?.title ?? 'none'}.`
   }
-  if (answer === 'Allow file') await update($, allowed, list => [...list, rel])
-  await update($, drift, last => (last.files.includes(rel) ? last : { ...last, files: [...last.files, rel] }))
+  await update($, track, last => edited(last, rel, answer === 'Allow file'))
 
   return undefined
 }
@@ -206,7 +200,7 @@ export const register: Register = (on, options) => {
     await update($, books, last => opened(last, startedAt))
     // A branch with no commit yet has no HEAD: every commit it gets is the session's.
     const head = (await git($, 'rev-parse', 'HEAD')) ?? ((await git($, 'rev-parse', '--git-dir')) === null ? null : '')
-    await update($, sessionBase, last => last ?? head)
+    await update($, track, last => began(last, head))
     timer?.cancel()
     timer = $.clock.every(FRAME_MS, async () => {
       const now = await $.clock.now()
@@ -231,7 +225,7 @@ export const register: Register = (on, options) => {
     if (verb === 'plan' && arg === 'off') return { text: await detach($) }
     if (verb === 'plan' && arg !== undefined) return { text: await attach($, arg) }
     if (verb === 'plan') {
-      const current = await read($, plan)
+      const { plan: current } = await read($, track)
 
       return { text: current === null ? `${NAME}: no plan attached.` : describePosition(current) }
     }
@@ -368,7 +362,7 @@ export const register: Register = (on, options) => {
     const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
     const { ledger } = await read($, books)
     const summary = isPaneShown ? null : await summaryRow($, now)
-    const current = await read($, plan)
+    const { plan: current } = await read($, track)
     if (summary === null && current === null) return rest
 
     const ui = $.ui.resolve(e)
@@ -396,15 +390,16 @@ export const register: Register = (on, options) => {
     const { status } = await read($, machine)
     const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
-    const current = await read($, plan)
+    const tracked = await read($, track)
+    const current = tracked.plan
     const { agents: team, ledger } = await read($, books)
     const cents = shares(team, ledger)
     const open = await read($, expanded)
     const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, ledger, { now, shares: cents })]
     // One agent open at a time: pressing another moves the details, pressing it again closes them.
     const toggle = ({ agentId }: Press) => void update($, expanded, id => (id === agentId ? null : agentId))
-    const log = commitRows(await read($, gitState), await read($, commits), current)
-    const left = await read($, drift)
+    const log = commitRows(tracked)
+    const left = tracked.drift
     const warm = cachePart(await read($, cache), ttlOverride, now)
     const style = styleFor(status.code)
     const isStale = sample !== null && now - sample.sampledAt > GAUGE_STALE_MS
