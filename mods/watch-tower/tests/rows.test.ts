@@ -1,23 +1,26 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { charged, ended, mainRun, saw, spawned } from '../hooks/agents'
+import { ended, mainRun } from '../hooks/agents'
 import { elapsed, shortModel, tokens, usd } from '../hooks/format'
 import { parseLog } from '../hooks/commits'
-import { LEDGER, agentCounted, billed, measured, toolCounted, turnBegan } from '../hooks/ledger'
+import { LEDGER } from '../hooks/ledger'
 import { bandRow, commitRows, totalRows, treeRows } from '../hooks/rows'
 import type { Row } from '../hooks/rows'
+import type { AgentRun } from '../types'
 
 const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}${row.right === undefined ? '' : ` | ${row.right}`}`
 
 describe('treeRows', () => {
   test('a running agent takes three rows, a finished one a single row, each with tokens and cost', () => {
-    let list = [{ ...mainRun('go', 1, 0), model: 'claude-opus-5-5' }]
-    list = spawned(list, { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', description: 'map events', model: 'claude-haiku-4-5-20251001' })
-    list = saw(list, 'a', 'reading hooks/register.tsx')
-    list = spawned(list, { ...mainRun('plan', 1, 2_000), id: 'b', parentId: 'main', type: 'Plan', description: 'design ledger' })
-    list = ended(list, 'b', false, 152_000, 'answer')
     // ↑ is fresh input plus cache writes; cache reads are left out.
-    list = charged(list, 'a', { input: 40_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }, 1)
+    const usage = { input: 40_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }
+    const look = { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', description: 'map events', model: 'claude-haiku-4-5-20251001' }
+    let list: AgentRun[] = [
+      { ...mainRun('go', 1, 0), model: 'claude-opus-5-5' },
+      { ...look, actions: ['reading hooks/register.tsx'], usage, weight: 1 },
+      { ...mainRun('plan', 1, 2_000), id: 'b', parentId: 'main', type: 'Plan', description: 'design ledger' },
+    ]
+    list = ended(list, 'b', false, 152_000, 'answer')
 
     expect(treeRows(list, { now: 66_000, shares: { main: 112, a: 6, b: 62 }, expanded: null }).map(text)).toEqual([
       '● main | 1m06s',
@@ -46,9 +49,9 @@ describe('treeRows', () => {
   test('the expanded agent shows ▾ and its details: cache counts, prompt in three lines, last five actions', () => {
     // A long prompt wraps between words; its blank line is dropped and what does not fit ends in `…`.
     const prompt = 'Map every event the mod hooks that carries token usage, and list the fields\n\neach one gives, then say which of them the ledger should read first.'
-    let list = [{ ...mainRun(prompt, 1, 0), model: 'claude-opus-5-5' }]
-    for (const at of [1, 2, 3, 4, 5, 6]) list = saw(list, 'main', `step ${at}`)
-    list = charged(list, 'main', { input: 1_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }, 1)
+    const actions = [1, 2, 3, 4, 5, 6].map(at => `step ${at}`)
+    const usage = { input: 1_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }
+    const list = [{ ...mainRun(prompt, 1, 0), model: 'claude-opus-5-5', actions, usage, weight: 1 }]
 
     const rows = treeRows(list, { now: 5_000, shares: { main: 42 }, expanded: 'main' }).map(text)
     expect(rows).toEqual([
@@ -67,8 +70,8 @@ describe('treeRows', () => {
   })
 
   test('a finished agent expands too; fewer actions show as they are; others keep their rows', () => {
-    let list = [mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore' }]
-    list = ended(saw(list, 'a', 'reading x'), 'a', false, 3_000, 'answer')
+    const look = { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', actions: ['reading x'] }
+    const list = ended([mainRun('go', 1, 0), look], 'a', false, 3_000, 'answer')
 
     expect(treeRows(list, { now: 9_000, shares: null, expanded: 'a' }).map(text)).toEqual([
       '● main | 9s',
@@ -94,10 +97,8 @@ describe('treeRows', () => {
 describe('totalRows', () => {
   test('Σ turn sums the turn, Σ session the whole session with tools, hit rate and the engine cost', () => {
     const usage = { input: 2_000, output: 14_000, cacheRead: 1_500_000, cacheWrite: 125_000 }
-    let ledger = turnBegan({ ...LEDGER, startedAt: 0 })
-    ledger = toolCounted(agentCounted(agentCounted(billed(ledger, usage, 1))))
-    ledger = measured(ledger, 42, 14.3)
-    const list = charged([mainRun('go', 1, 60_000), { ...mainRun('look', 1, 61_000), id: 'a', parentId: 'main' }], 'a', usage, 1)
+    const ledger = { ...LEDGER, turn: 1, costUsd: 14.3, contextPct: 42, session: { usage, weight: 1, agents: 2, tools: 1 } }
+    const list = [mainRun('go', 1, 60_000), { ...mainRun('look', 1, 61_000), id: 'a', parentId: 'main', usage, weight: 1 }]
 
     expect(totalRows(list, ledger, { now: 312_000, shares: { main: 0, a: 180 } }).map(text)).toEqual([
       'Σ turn     4m12s  1 agent  ↑127k ↓14k  $1.80',
@@ -116,11 +117,11 @@ describe('totalRows', () => {
 })
 
 describe('bandRow', () => {
-  const ledger = turnBegan(LEDGER)
+  const ledger = { ...LEDGER, turn: 1 }
 
   test('running subagents, the turn time, tokens and cost on one row', () => {
     const usage = { input: 2_000, output: 14_000, cacheRead: 0, cacheWrite: 125_000 }
-    const list = charged([mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main' }], 'a', usage, 1)
+    const list = [mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', usage, weight: 1 }]
 
     expect(text(bandRow(list, ledger, { now: 252_000, shares: { main: 0, a: 180 } }) as Row)).toBe('● 1 agent running  4m12s  ↑127k ↓14k  $1.80')
   })

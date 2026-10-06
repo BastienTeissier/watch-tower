@@ -53,6 +53,9 @@ export type AgentRun = {
   weight: number
 }
 
+/** The session's agents and its ledger, moved together by each session event. */
+export type Books = { agents: AgentRun[]; ledger: Ledger }
+
 /** `dirty`: uncommitted paths. */
 export type Git = { branch: string; dirty: number }
 
@@ -77,8 +80,7 @@ declare module 'claude-code' {
       gauges: Gauges | null
       tick: Tick
       plan: Plan | null
-      agents: AgentRun[]
-      ledger: Ledger
+      books: Books
       git: Git | null
       /** HEAD when the session started, `''` on a branch with no commit yet; commits after it are the session's. */
       sessionBase: string | null

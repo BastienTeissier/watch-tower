@@ -1,18 +1,19 @@
 // Watch Tower as a mod: wiring only. Session events drive the state machine
 // (machine.ts), a pane draws the active Species in the state's style, the
 // attached plan's position (plan.ts), the agent tree with its tokens and cost
-// (agents.ts, ledger.ts) and the prompt cache's countdown. Everything reaching `$` is in this file: the
+// (books.ts) and the prompt cache's countdown. Everything reaching `$` is in this file: the
 // validator follows `$` into no import.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { AgentRun, Gauge, Plan, SessionCommits } from '../types'
-import { MAIN, charged, describe, ended, icon, label, mainRun, modelSeen, nextTurn, saw, spawned, subRun } from './agents'
+import type { Gauge, Plan, SessionCommits } from '../types'
+import { MAIN, describe, icon, label } from './agents'
+import { BOOKS, ended, measured, opened, prompted, requested, spawned, toolUsed } from './books'
 import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
 import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machine'
 import type { BuddyEvent } from './machine'
-import { LEDGER, agentCounted, billed, measured, shares, toolCounted, turnBegan, usageOf } from './ledger'
+import { shares, usageOf } from './ledger'
 import { companionLines, gaugeLine, rowLine } from './pane'
 import { editedPath, isOffPlan, parsePlan, planLabel, position, relativeTo, tickCommits, unplanned } from './plan'
 import { weightOf } from './pricing'
@@ -34,8 +35,7 @@ const machine = atom({ plugin: 'watch-tower', key: 'machine' } as const, INITIAL
 const gauges = atom({ plugin: 'watch-tower', key: 'gauges' } as const, null)
 const tick = atom({ plugin: 'watch-tower', key: 'tick' } as const, { frame: 0, now: 0 })
 const plan = atom({ plugin: 'watch-tower', key: 'plan' } as const, null)
-const agents = atom({ plugin: 'watch-tower', key: 'agents' } as const, [] as AgentRun[])
-const ledger = atom({ plugin: 'watch-tower', key: 'ledger' } as const, LEDGER)
+const books = atom({ plugin: 'watch-tower', key: 'books' } as const, BOOKS)
 const gitState = atom({ plugin: 'watch-tower', key: 'git' } as const, null)
 const sessionBase = atom({ plugin: 'watch-tower', key: 'sessionBase' } as const, null)
 const commits = atom({ plugin: 'watch-tower', key: 'commits' } as const, { list: [], total: 0 } as SessionCommits)
@@ -103,10 +103,9 @@ function describePosition(current: Plan): string {
 
 /** The band's turn summary; null when no agent runs. */
 async function summaryRow($: EngineInterface, now: number) {
-  const team = await read($, agents)
-  const books = await read($, ledger)
+  const { agents, ledger } = await read($, books)
 
-  return bandRow(team, books, { now, shares: shares(team, books) })
+  return bandRow(agents, ledger, { now, shares: shares(agents, ledger) })
 }
 
 /** Re-reads the plan and the commit logs, and takes the git state. */
@@ -204,7 +203,7 @@ export const register: Register = (on, options) => {
     })
     await emit($, { kind: 'session' })
     const startedAt = await $.clock.now()
-    await update($, ledger, last => (last.startedAt === 0 ? { ...last, startedAt } : last))
+    await update($, books, last => opened(last, startedAt))
     // A branch with no commit yet has no HEAD: every commit it gets is the session's.
     const head = (await git($, 'rev-parse', 'HEAD')) ?? ((await git($, 'rev-parse', '--git-dir')) === null ? null : '')
     await update($, sessionBase, last => last ?? head)
@@ -251,10 +250,9 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
-    const { turn } = await update($, ledger, turnBegan)
-    const team = await update($, agents, list => [mainRun(e.text, turn, now), ...nextTurn(list)])
+    const { agents } = await update($, books, last => prompted(last, e.text, now))
     // An agent cleared with the last turn takes its details with it; so does main, a new run each prompt.
-    await update($, expanded, id => (id !== MAIN && team.some(one => one.id === id) ? id : null))
+    await update($, expanded, id => (id !== MAIN && agents.some(one => one.id === id) ? id : null))
     const path = /^\/implement-plan\s+(\S+)/.exec(e.text)?.[1]
     if (path !== undefined) $.ui.toast(await attach($, path))
 
@@ -269,8 +267,7 @@ export const register: Register = (on, options) => {
       const usage = usageOf(result.usage)
       const weight = weightOf(model, usage)
       const id = e.agentId ?? MAIN
-      await update($, agents, list => charged(modelSeen(list, id, model), id, usage, weight))
-      await update($, ledger, last => billed(last, usage, weight))
+      await update($, books, last => requested(last, id, model, usage, weight))
     }
     if (e.agentId === undefined && result.stopReason !== null) {
       const now = await $.clock.now()
@@ -285,8 +282,7 @@ export const register: Register = (on, options) => {
     if (denied !== undefined) return { deny: denied }
 
     await emit($, toolEvent(e))
-    await update($, ledger, toolCounted)
-    await update($, agents, list => saw(list, e.agentId ?? MAIN, describe(e as unknown as Record<string, unknown>)))
+    await update($, books, last => toolUsed(last, e.agentId ?? MAIN, describe(e)))
     const ran = await next(e)
     await emit($, { kind: 'tool-done' })
     if (e.tool === 'Bash' && HISTORY_COMMANDS.test(e.command)) await refresh($)
@@ -297,21 +293,17 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const spawn = await next(e)
     if (spawn.agentId !== undefined) {
-      const run = subRun(
-        {
-          id: spawn.agentId,
-          parentId: e.parentAgentId ?? MAIN,
-          description: e.description,
-          type: e.subagentType,
-          model: spawn.model,
-          prompt: e.prompt,
-          isBackground: e.background,
-        },
-        (await read($, ledger)).turn,
-        await $.clock.now(),
-      )
-      await update($, agents, list => spawned(list, run))
-      await update($, ledger, agentCounted)
+      const run = {
+        id: spawn.agentId,
+        parentId: e.parentAgentId ?? MAIN,
+        description: e.description,
+        type: e.subagentType,
+        model: spawn.model,
+        prompt: e.prompt,
+        isBackground: e.background,
+      }
+      const now = await $.clock.now()
+      await update($, books, last => spawned(last, run, now))
     }
 
     return spawn
@@ -321,7 +313,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const isFailed = e.reason === 'error' || e.reason === 'aborted'
     if (e.agentId === undefined) {
-      await update($, agents, all => ended(all, MAIN, isFailed, now, e.reason))
+      await update($, books, last => ended(last, MAIN, isFailed, now, e.reason))
       await emit($, { kind: 'stop' })
       await refresh($)
       if (ttlOverride === null) {
@@ -330,8 +322,8 @@ export const register: Register = (on, options) => {
       }
     } else {
       const id = e.agentId
-      const list = await update($, agents, all => ended(all, id, isFailed, now, e.reason))
-      const one = list.find(run => run.id === id)
+      const { agents } = await update($, books, last => ended(last, id, isFailed, now, e.reason))
+      const one = agents.find(run => run.id === id)
       if (one !== undefined) $.ui.toast(`${icon(one)} ${label(one)} ${isFailed ? 'failed' : 'done'} (${one.tools} tools)`)
     }
 
@@ -361,7 +353,7 @@ export const register: Register = (on, options) => {
       return { pct: Math.round(limit.percentUsed), resetsAt: Number.isNaN(resetsAt) ? null : resetsAt }
     }
     await update($, gauges, () => ({ five: gauge('five_hour'), week: gauge('seven_day'), sampledAt }))
-    await update($, ledger, last => measured(last, e.context.percent ?? null, e.cost?.usd ?? null))
+    await update($, books, last => measured(last, e.context.percent ?? null, e.cost?.usd ?? null))
 
     return next(e)
   })
@@ -374,7 +366,7 @@ export const register: Register = (on, options) => {
     // Read every frame, so the band looks again when the pane leaves the screen.
     const { now } = await read($, tick)
     const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
-    const books = await read($, ledger)
+    const { ledger } = await read($, books)
     const summary = isPaneShown ? null : await summaryRow($, now)
     const current = await read($, plan)
     if (summary === null && current === null) return rest
@@ -390,7 +382,7 @@ export const register: Register = (on, options) => {
           <Text wrap="truncate-end">
             <Text bold color="#a064dc">{` ${planLabel(at.phase)} ${at.phaseDone}/${at.phaseTotal}`}</Text>
             <Text>{at.current === null ? '  plan complete' : `  ▸ ${at.current.title}`}</Text>
-            {books.contextPct !== null && <Text dimColor>{`  ctx ${books.contextPct}%`}</Text>}
+            {ledger.contextPct !== null && <Text dimColor>{`  ctx ${ledger.contextPct}%`}</Text>}
           </Text>
         )}
         {rest}
@@ -405,11 +397,10 @@ export const register: Register = (on, options) => {
     const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
     const current = await read($, plan)
-    const team = await read($, agents)
-    const books = await read($, ledger)
-    const cents = shares(team, books)
+    const { agents: team, ledger } = await read($, books)
+    const cents = shares(team, ledger)
     const open = await read($, expanded)
-    const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, books, { now, shares: cents })]
+    const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, ledger, { now, shares: cents })]
     // One agent open at a time: pressing another moves the details, pressing it again closes them.
     const toggle = ({ agentId }: Press) => void update($, expanded, id => (id === agentId ? null : agentId))
     const log = commitRows(await read($, gitState), await read($, commits), current)
@@ -443,9 +434,9 @@ export const register: Register = (on, options) => {
           </Text>
         )}
         <Text dimColor>{rule}</Text>
-        {(books.contextPct !== null || warm !== null) && (
+        {(ledger.contextPct !== null || warm !== null) && (
           <Text wrap="truncate-end">
-            {books.contextPct !== null && <Text dimColor>{`ctx ${books.contextPct}%  `}</Text>}
+            {ledger.contextPct !== null && <Text dimColor>{`ctx ${ledger.contextPct}%  `}</Text>}
             {warm !== null && (
               <Text color={warm.color} dimColor={warm.isCold}>
                 {warm.text}

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { charged, mainRun } from '../hooks/agents'
-import { LEDGER, NO_USAGE, billed, hitRate, measured, shares, turnBegan, turnTotals, upTokens } from '../hooks/ledger'
+import { mainRun } from '../hooks/agents'
+import { LEDGER, NO_USAGE, hitRate, shares, turnTotals, upTokens } from '../hooks/ledger'
 import type { AgentRun, Ledger } from '../types'
 
 const run = (id: string, turn: number, weight: number): AgentRun => ({
@@ -12,10 +12,8 @@ const run = (id: string, turn: number, weight: number): AgentRun => ({
   weight,
 })
 
-const costing = (usd: number | null, weight: number): Ledger => ({
-  ...measured(turnBegan(turnBegan(LEDGER)), null, usd),
-  session: { ...LEDGER.session, weight },
-})
+/** The ledger of turn 2, its session spent `weight` and cost `usd`. */
+const costing = (usd: number | null, weight: number): Ledger => ({ ...LEDGER, turn: 2, costUsd: usd, session: { ...LEDGER.session, weight } })
 
 describe('shares', () => {
   test('split in thirds, the cents still sum to the session cost', () => {
@@ -55,20 +53,7 @@ describe('turnTotals', () => {
   })
 })
 
-describe('ledger', () => {
-  test('billing adds to the session, an agent keeps its own usage and weight', () => {
-    const usage = { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }
-    const ledger = billed(billed(LEDGER, usage, 0.5), usage, 0.25)
-
-    expect(ledger.session.usage).toEqual({ input: 2, output: 4, cacheRead: 6, cacheWrite: 8 })
-    expect(ledger.session.weight).toBe(0.75)
-    expect(charged([mainRun('go', 1, 0)], 'main', usage, 0.5)[0]).toMatchObject({ usage, weight: 0.5 })
-  })
-
-  test('a measure without a figure keeps the last one', () => {
-    expect(measured(measured(LEDGER, 42, 1.8), null, null)).toMatchObject({ contextPct: 42, costUsd: 1.8 })
-  })
-
+describe('hitRate', () => {
   test('hit rate is cache reads over all input', () => {
     expect(hitRate(NO_USAGE)).toBeNull()
     expect(hitRate({ input: 2, output: 50, cacheRead: 94, cacheWrite: 4 })).toBe(94)

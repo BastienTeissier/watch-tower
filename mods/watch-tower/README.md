@@ -62,6 +62,7 @@ while anything runs, above the plan position.
 | `hooks/style.ts`     | per-state colour / eye / pulse, port of the firmware's `sprite.cpp` |
 | `hooks/species.ts`   | 18 Species × 3 frames, port of the firmware's `species/*.h`     |
 | `hooks/plan.ts`      | pure: parse a plan's To Do List, tick tasks from commit subjects, position, off-plan paths |
+| `hooks/books.ts`     | pure: the session's books, agents and ledger moved together by each session event |
 | `hooks/agents.ts`    | pure: the agent tree, main thread and subagents (after agent-radar) |
 | `hooks/rows.ts`      | pure: the pane as rows: tree, expanded details, totals, band summary, commits |
 | `hooks/pane.tsx`     | draws rows and gauges with the surface's elements; a pressable row's mark is a Button |

@@ -36,29 +36,6 @@ export function added(a: Usage, b: Usage): Usage {
 /** `↑`: input that is new, fresh or written to the cache; cache reads are not. */
 export const upTokens = (usage: Usage) => usage.input + usage.cacheWrite
 
-export const turnBegan = (ledger: Ledger): Ledger => ({ ...ledger, turn: ledger.turn + 1 })
-
-export const billed = (ledger: Ledger, usage: Usage, weight: number): Ledger => ({
-  ...ledger,
-  session: { ...ledger.session, usage: added(ledger.session.usage, usage), weight: ledger.session.weight + weight },
-})
-
-export const agentCounted = (ledger: Ledger): Ledger => ({
-  ...ledger,
-  session: { ...ledger.session, agents: ledger.session.agents + 1 },
-})
-
-export const toolCounted = (ledger: Ledger): Ledger => ({
-  ...ledger,
-  session: { ...ledger.session, tools: ledger.session.tools + 1 },
-})
-
-export const measured = (ledger: Ledger, contextPct: number | null, costUsd: number | null): Ledger => ({
-  ...ledger,
-  contextPct: contextPct ?? ledger.contextPct,
-  costUsd: costUsd ?? ledger.costUsd,
-})
-
 /** Cents per agent id, null when the session reports no cost. */
 export type Shares = Record<string, number> | null
 
