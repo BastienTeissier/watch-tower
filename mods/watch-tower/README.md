@@ -65,8 +65,9 @@ while anything runs, above the plan position.
 | `hooks/track.ts`     | pure: the session's track, git state, commits, the attached plan and its drift, moved together |
 | `hooks/books.ts`     | pure: the session's books, agents and ledger moved together by each session event |
 | `hooks/agents.ts`    | pure: the agent tree, main thread and subagents (after agent-radar) |
+| `hooks/view.ts`      | pure: the pane's sections and the band as rows, from the session's state; every plan-position format |
 | `hooks/rows.ts`      | pure: the pane as rows: tree, expanded details, totals, band summary, commits |
-| `hooks/pane.tsx`     | draws rows and gauges with the surface's elements; a pressable row's mark is a Button |
+| `hooks/pane.tsx`     | draws rows and sections with the surface's elements; a pressable row's mark is a Button |
 | `hooks/commits.ts`   | pure: parse the session's `git log --shortstat`                |
 | `hooks/format.ts`    | pure: times, token counts, dollars, short model names          |
 | `hooks/ledger.ts`    | pure: session tokens and cost, each agent's share of the cost |

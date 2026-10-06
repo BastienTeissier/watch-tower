@@ -1,4 +1,4 @@
-// What the pane shows, as data: register.tsx maps each Row to elements.
+// What the pane shows, as data: view.ts gathers the rows, pane.tsx draws them.
 import type { AgentRun, Ledger, Track, Usage } from '../types'
 import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
 import { elapsed, shortModel, tokens, usd } from './format'
@@ -7,7 +7,7 @@ import type { Shares } from './ledger'
 import { DRIFT_COLOR } from './style'
 import { commitMark } from './track'
 
-export type Span = { text: string; color?: string; isDim?: boolean }
+export type Span = { text: string; color?: string | undefined; isDim?: boolean; isBold?: boolean }
 
 /** What pressing a row names: the agent whose details it opens or closes. */
 export type Press = { agentId: string }

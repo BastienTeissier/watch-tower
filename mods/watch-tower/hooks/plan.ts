@@ -140,9 +140,6 @@ export function unplanned(plan: Plan, subjects: readonly string[]): string[] {
   return subjects.filter(subject => !titles.includes(subject))
 }
 
-/** The band's short phase name: `Phase 0 — App skeleton` → `P0`. */
-export const planLabel = (phase: Phase | null) => phase?.name.replace(/^Phase\s+/i, 'P').replace(/\s+[—–-]\s+.*$/, '') ?? ''
-
 /** The file a tool call edits; null for a tool that edits none. */
 export function editedPath(e: ToolCallInput): string | null {
   if (e.tool === 'Edit' || e.tool === 'Write') return e.file_path

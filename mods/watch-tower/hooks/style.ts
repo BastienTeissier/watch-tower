@@ -23,6 +23,8 @@ const STYLES: Record<number, Style> = {
 
 /** What left the plan: drift counts and off-plan commits. */
 export const DRIFT_COLOR = '#ff8c28'
+/** The plan's phase, in the pane and the band. */
+export const PLAN_COLOR = '#a064dc'
 
 const UNKNOWN: Style = { name: 'UNKNOWN', shell: '#ff00ff', eye: '?', isEyeCycling: false, isPulsing: false }
 const EYE_CYCLE = ['.', 'o', 'O']

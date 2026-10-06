@@ -1,27 +1,26 @@
 // Watch Tower as a mod: wiring only. Session events drive the state machine
-// (machine.ts), a pane draws the active Species in the state's style, the
-// attached plan's position and drift (track.ts), the agent tree with its tokens and cost
-// (books.ts) and the prompt cache's countdown. Everything reaching `$` is in this file: the
-// validator follows `$` into no import.
+// (machine.ts), the session's books (books.ts) and its track (track.ts); a pane
+// draws them as rows (view.ts) above the active Species in the state's style.
+// Everything reaching `$` is in this file: the validator follows `$` into no import.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { Gauge, Plan } from '../types'
 import { MAIN, describe, icon, label } from './agents'
 import { BOOKS, ended, measured, opened, prompted, requested, spawned, toolUsed } from './books'
-import { COLD, asTtl, cachePart, ttlFromTranscript } from './cache'
+import { COLD, asTtl, ttlFromTranscript } from './cache'
 import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machine'
 import type { BuddyEvent } from './machine'
-import { shares, usageOf } from './ledger'
-import { companionLines, gaugeLine, rowLine } from './pane'
-import { editedPath, parsePlan, planLabel, position, relativeTo, tickCommits } from './plan'
+import { usageOf } from './ledger'
+import { companionLines, rowLine, sectionLines } from './pane'
+import { editedPath, parsePlan, position, relativeTo, tickCommits } from './plan'
 import { weightOf } from './pricing'
-import { bandRow, commitRows, totalRows, treeRows } from './rows'
 import type { Press } from './rows'
 import { speciesFor } from './species'
-import { DRIFT_COLOR, GAUGE_STALE_MS, styleFor } from './style'
+import { styleFor } from './style'
 import { TRACK, attached, began, detached, edited, holds, observed } from './track'
+import { bandRows, paneSections, positionText } from './view'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
 // literally: the validator reads a state reference only from string literals.
@@ -90,19 +89,7 @@ async function load($: EngineInterface, path: string, base: string | null): Prom
   return parsePlan(path, ticked, base)
 }
 
-function describePosition(current: Plan): string {
-  const at = position(current)
-  if (at.current === null) return `${NAME}: plan complete, ${at.done}/${at.total} tasks done.`
-
-  return `${NAME}: ${at.phase?.name ?? ''} ${at.phaseDone}/${at.phaseTotal} — now: ${at.current.title}${at.next === null ? '' : `; next: ${at.next.title}`}.`
-}
-
-/** The band's turn summary; null when no agent runs. */
-async function summaryRow($: EngineInterface, now: number) {
-  const { agents, ledger } = await read($, books)
-
-  return bandRow(agents, ledger, { now, shares: shares(agents, ledger) })
-}
+const describePosition = (current: Plan) => `${NAME}: ${positionText(current)}`
 
 /** Re-reads the plan and the commit logs, and takes the git state. */
 async function refresh($: EngineInterface): Promise<void> {
@@ -360,25 +347,15 @@ export const register: Register = (on, options) => {
     // Read every frame, so the band looks again when the pane leaves the screen.
     const { now } = await read($, tick)
     const isPaneShown = (await $.ui.panes()).some(pane => pane.id === PANE && pane.isPlaced && pane.isShown)
-    const { ledger } = await read($, books)
-    const summary = isPaneShown ? null : await summaryRow($, now)
-    const { plan: current } = await read($, track)
-    if (summary === null && current === null) return rest
+    const rows = bandRows(await read($, books), (await read($, track)).plan, now, isPaneShown)
+    if (rows.length === 0) return rest
 
     const ui = $.ui.resolve(e)
-    const { Box, Text } = ui
-    const at = current === null ? null : position(current)
+    const { Box } = ui
 
     return (
       <Box flexDirection="column">
-        {summary !== null && rowLine(ui, summary)}
-        {at !== null && (
-          <Text wrap="truncate-end">
-            <Text bold color="#a064dc">{` ${planLabel(at.phase)} ${at.phaseDone}/${at.phaseTotal}`}</Text>
-            <Text>{at.current === null ? '  plan complete' : `  ▸ ${at.current.title}`}</Text>
-            {ledger.contextPct !== null && <Text dimColor>{`  ctx ${ledger.contextPct}%`}</Text>}
-          </Text>
-        )}
+        {rows.map(row => rowLine(ui, row))}
         {rest}
       </Box>
     )
@@ -386,65 +363,29 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { Box, Text } = ui
+    const { Box } = ui
     const { status } = await read($, machine)
-    const sample = await read($, gauges)
     const { frame, now } = await read($, tick)
-    const tracked = await read($, track)
-    const current = tracked.plan
-    const { agents: team, ledger } = await read($, books)
-    const cents = shares(team, ledger)
-    const open = await read($, expanded)
-    const crew = [...treeRows(team, { now, shares: cents, expanded: open }), ...totalRows(team, ledger, { now, shares: cents })]
+    const seen = {
+      books: await read($, books),
+      track: await read($, track),
+      expanded: await read($, expanded),
+      cache: await read($, cache),
+      ttl: ttlOverride,
+      gauges: await read($, gauges),
+      now,
+    }
     // One agent open at a time: pressing another moves the details, pressing it again closes them.
     const toggle = ({ agentId }: Press) => void update($, expanded, id => (id === agentId ? null : agentId))
-    const log = commitRows(tracked)
-    const left = tracked.drift
-    const warm = cachePart(await read($, cache), ttlOverride, now)
-    const style = styleFor(status.code)
-    const isStale = sample !== null && now - sample.sampledAt > GAUGE_STALE_MS
-    const at = current === null ? null : position(current)
     const rule = '─'.repeat(Math.max(10, Math.min(40, e.props.bodyColumns - 2)))
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        {crew.map(row => rowLine(ui, row, toggle))}
-        {crew.length > 0 && <Text dimColor>{rule}</Text>}
-        {log.map(row => rowLine(ui, row))}
-        {log.length > 0 && <Text dimColor>{rule}</Text>}
-        {at !== null && current !== null && (
-          <Box flexDirection="column">
-            <Text wrap="truncate-end">
-              <Text bold color="#a064dc">{at.phase?.name ?? 'Plan complete'}</Text>
-              <Text dimColor>{`  ${at.phaseDone}/${at.phaseTotal}  (${at.done}/${at.total})`}</Text>
-            </Text>
-            {at.current !== null && <Text wrap="truncate-end">{`▸ ${at.current.title}`}</Text>}
-            {at.next !== null && <Text dimColor wrap="truncate-end">{`  next: ${at.next.title}`}</Text>}
-          </Box>
-        )}
-        {at === null && <Text dimColor>no plan · /{NAME} plan {'<path>'}</Text>}
-        {(left.files.length > 0 || left.commits.length > 0) && (
-          <Text color={DRIFT_COLOR} wrap="truncate-end">
-            {`drift: ${left.files.length} files, ${left.commits.length} commits`}
-          </Text>
-        )}
-        <Text dimColor>{rule}</Text>
-        {(ledger.contextPct !== null || warm !== null) && (
-          <Text wrap="truncate-end">
-            {ledger.contextPct !== null && <Text dimColor>{`ctx ${ledger.contextPct}%  `}</Text>}
-            {warm !== null && (
-              <Text color={warm.color} dimColor={warm.isCold}>
-                {warm.text}
-              </Text>
-            )}
-          </Text>
-        )}
-        {gaugeLine(ui, '5h', sample?.five ?? null, now, isStale)}
-        {gaugeLine(ui, '7d', sample?.week ?? null, now, isStale)}
+        {sectionLines(ui, paneSections(seen, `/${NAME} plan <path>`), rule, toggle)}
         {hasCompanion &&
           companionLines(ui, {
             species,
-            style,
+            style: styleFor(status.code),
             frame,
             message: status.msg,
             rule,

@@ -203,10 +203,10 @@ describe('watch-tower pane', () => {
     expect(await ui.find({ type: 'Text', text: /42%/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /in 2h9m/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /91%/ })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /42%/ }))?.props.dimColor).toBeFalsy()
+    expect((await ui.find({ type: 'Text', text: /^ 42%$/ }))?.props.dimColor).toBeFalsy()
 
     await clock.advance(11 * 60 * 1000)
-    expect((await ui.find({ type: 'Text', text: /42%/ }))?.props.dimColor).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^ 42%$/ }))?.props.dimColor).toBe(true)
     await ui.unmount()
   })
 })
