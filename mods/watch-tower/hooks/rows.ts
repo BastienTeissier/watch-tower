@@ -1,6 +1,6 @@
 // What the pane shows, as data: view.ts gathers the rows, pane.tsx draws them.
 import type { AgentRun, Ledger, Track, Usage } from '../types'
-import { MAIN, agentColor, currentAction, icon, label, tree } from './agents'
+import { ACTIONS, MAIN, agentColor, currentAction, icon, label, tree } from './agents'
 import { elapsed, shortModel, tokens, usd } from './format'
 import { hitRate, sessionCents, turnTotals, upTokens } from './ledger'
 import type { Shares } from './ledger'
@@ -25,7 +25,6 @@ const joined = (parts: (string | null)[], gap: string) => parts.filter(part => p
 const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
 const PROMPT_LINES = 3
 const PROMPT_COLUMNS = 40
-const ACTIONS = 5
 /** The turn's time: the main thread's, frozen when it ended. */
 const turnTime = (main: AgentRun, now: number) => elapsed((main.endedAt ?? now) - main.startedAt)
 
