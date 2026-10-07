@@ -1,0 +1,173 @@
+import { describe, expect, test } from 'claude-code/testing'
+
+import { ended, mainRun } from '../hooks/agents'
+import { elapsed, shortModel, tokens, usd } from '../hooks/format'
+import { parseLog } from '../hooks/commits'
+import { LEDGER } from '../hooks/ledger'
+import { bandRow, commitRows, totalRows, treeRows } from '../hooks/rows'
+import type { Row } from '../hooks/rows'
+import { TRACK } from '../hooks/track'
+import type { AgentRun, Commit, Git } from '../types'
+
+const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}${row.right === undefined ? '' : ` | ${row.right}`}`
+
+describe('treeRows', () => {
+  test('a running agent takes three rows, a finished one a single row, each with tokens and cost', () => {
+    // ↑ is fresh input plus cache writes; cache reads are left out.
+    const usage = { input: 40_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }
+    const look = { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', description: 'map events', model: 'claude-haiku-4-5-20251001' }
+    let list: AgentRun[] = [
+      { ...mainRun('go', 1, 0), model: 'claude-opus-5-5' },
+      { ...look, actions: ['reading hooks/register.tsx'], usage, weight: 1 },
+      { ...mainRun('plan', 1, 2_000), id: 'b', parentId: 'main', type: 'Plan', description: 'design ledger' },
+    ]
+    list = ended(list, 'b', false, 152_000, 'answer')
+
+    expect(treeRows(list, { now: 66_000, shares: { main: 112, a: 6, b: 62 }, expanded: null }).map(text)).toEqual([
+      '● main | 1m06s',
+      '  opus-5.5 · ↑0k ↓0k · $1.12',
+      '  starting',
+      '  ● Explore: map events | 1m05s',
+      '    haiku-4.5 · ↑46k ↓2k · $0.06',
+      '    reading hooks/register.tsx',
+      '  ✓ Plan: design ledger | 2m30s ↑0k ↓0k $0.62',
+    ])
+    expect(treeRows(list, { now: 66_000, shares: null, expanded: null }).map(text)[1]).toBe('  opus-5.5 · ↑0k ↓0k')
+  })
+
+  test('a failed agent says why on its one row', () => {
+    const list = ended([mainRun('go', 1, 0)], 'main', true, 5_000, 'aborted')
+
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: null }).map(text)).toEqual(['✗ main  stopped: aborted | 5s ↑0k ↓0k'])
+  })
+
+  test('a subagent spawned without a description is labelled with its type alone', () => {
+    const list = ended([{ ...mainRun('look', 1, 0), id: 'a', parentId: 'main', type: 'Explore' }], 'a', false, 2_000, 'answer')
+
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: null }).map(text)).toEqual(['✓ Explore | 2s ↑0k ↓0k'])
+  })
+
+  test('the expanded agent shows ▾ and its details: cache counts, prompt in three lines, last five actions', () => {
+    // A long prompt wraps between words; its blank line is dropped and what does not fit ends in `…`.
+    const prompt = 'Map every event the mod hooks that carries token usage, and list the fields\n\neach one gives, then say which of them the ledger should read first.'
+    const actions = [1, 2, 3, 4, 5, 6].map(at => `step ${at}`)
+    const usage = { input: 1_000, output: 2_000, cacheRead: 310_000, cacheWrite: 6_000 }
+    const list = [{ ...mainRun(prompt, 1, 0), model: 'claude-opus-5-5', actions, usage, weight: 1 }]
+
+    const rows = treeRows(list, { now: 5_000, shares: { main: 42 }, expanded: 'main' }).map(text)
+    expect(rows).toEqual([
+      '▾ main | 5s',
+      '  opus-5.5 · ↑7k ↓2k · $0.42',
+      '  cache read 310k · write 6k',
+      '  Map every event the mod hooks that',
+      '  carries token usage, and list the fields',
+      '  each one gives, then say which of them…',
+      '  · step 2',
+      '  · step 3',
+      '  · step 4',
+      '  · step 5',
+      '  · step 6',
+    ])
+  })
+
+  test('a finished agent expands too; fewer actions show as they are; others keep their rows', () => {
+    const look = { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', type: 'Explore', actions: ['reading x'] }
+    const list = ended([mainRun('go', 1, 0), look], 'a', false, 3_000, 'answer')
+
+    expect(treeRows(list, { now: 9_000, shares: null, expanded: 'a' }).map(text)).toEqual([
+      '● main | 9s',
+      '  … · ↑0k ↓0k',
+      '  starting',
+      '  ▾ Explore | 2s ↑0k ↓0k',
+      '    … · ↑0k ↓0k',
+      '    cache read 0k · write 0k',
+      '    look',
+      '    · reading x',
+    ])
+  })
+
+  test('before the first clock tick, an agent started later reads 0s, never negative', () => {
+    expect(treeRows([mainRun('go', 1, 5_000)], { now: 0, shares: null, expanded: null }).map(text)[0]).toBe('● main | 0s')
+  })
+
+  test('no agent, no row', () => {
+    expect(treeRows([], { now: 0, shares: null, expanded: null })).toEqual([])
+  })
+})
+
+describe('totalRows', () => {
+  test('Σ turn sums the turn, Σ session the whole session with tools, hit rate and the engine cost', () => {
+    const usage = { input: 2_000, output: 14_000, cacheRead: 1_500_000, cacheWrite: 125_000 }
+    const ledger = { ...LEDGER, turn: 1, costUsd: 14.3, contextPct: 42, session: { usage, weight: 1, agents: 2, tools: 1 } }
+    const list = [mainRun('go', 1, 60_000), { ...mainRun('look', 1, 61_000), id: 'a', parentId: 'main', usage, weight: 1 }]
+
+    expect(totalRows(list, ledger, { now: 312_000, shares: { main: 0, a: 180 } }).map(text)).toEqual([
+      'Σ turn     4m12s  1 agent  ↑127k ↓14k  $1.80',
+      'Σ session  5m12s  2 agents  1 tool',
+      '           ↑127k ↓14k  cache 92%  $14.30',
+    ])
+  })
+
+  test('before any prompt, Σ session alone, with no cost when none is reported', () => {
+    expect(totalRows([], LEDGER, { now: 5_000, shares: null }).map(text)).toEqual(['Σ session  5s  0 agents  0 tools', '           ↑0k ↓0k'])
+  })
+
+  test('before the first clock tick, the session time reads 0s, never negative', () => {
+    expect(totalRows([], { ...LEDGER, startedAt: 5_000 }, { now: 0, shares: null }).map(text)[0]).toBe('Σ session  0s  0 agents  0 tools')
+  })
+})
+
+describe('bandRow', () => {
+  const ledger = { ...LEDGER, turn: 1 }
+
+  test('running subagents, the turn time, tokens and cost on one row', () => {
+    const usage = { input: 2_000, output: 14_000, cacheRead: 0, cacheWrite: 125_000 }
+    const list = [mainRun('go', 1, 0), { ...mainRun('look', 1, 1_000), id: 'a', parentId: 'main', usage, weight: 1 }]
+
+    expect(text(bandRow(list, ledger, { now: 252_000, shares: { main: 0, a: 180 } }) as Row)).toBe('● 1 agent running  4m12s  ↑127k ↓14k  $1.80')
+  })
+
+  test('the main thread alone, no $ without a cost, nothing once no agent runs', () => {
+    const list = [mainRun('go', 1, 0)]
+
+    expect(text(bandRow(list, ledger, { now: 5_000, shares: null }) as Row)).toBe('● main  5s  ↑0k ↓0k')
+    expect(bandRow(ended(list, 'main', false, 5_000, 'answer'), ledger, { now: 9_000, shares: null })).toBeNull()
+    expect(bandRow([], ledger, { now: 0, shares: null })).toBeNull()
+  })
+})
+
+describe('commitRows', () => {
+  const git = { branch: 'main', dirty: 2 }
+  const rows = (list: Commit[], total: number, at: Git | null = git) => commitRows({ ...TRACK, git: at, commits: { list, total } })
+  const list = parseLog(['a1a1a1a\tfeat: one', ' 1 file changed, 3 insertions(+)', 'b2b2b2b\tfix: two', ' 2 files changed, 1 deletion(-)'].join('\n'))
+
+  test('lists the commits it holds, counts the rest of the session, then the branch', () => {
+    expect(rows(list, 7).map(text)).toEqual([
+      'commits',
+      'a1a1a1a feat: one',
+      '    1 file +3 −0',
+      'b2b2b2b fix: two',
+      '    2 files +0 −1',
+      '+5 earlier',
+      'main  ±2 uncommitted',
+    ])
+  })
+
+  test('no earlier line when every commit is shown; the branch alone when there are none', () => {
+    expect(rows(list, 2).map(text)).not.toContain('+0 earlier')
+    expect(rows([], 0).map(text)).toEqual(['main  ±2 uncommitted'])
+    expect(rows(list, 2, null)).toEqual([])
+  })
+})
+
+describe('format', () => {
+  test('elapsed and model names', () => {
+    expect([elapsed(59_999), elapsed(60_000), elapsed(3_600_000)]).toEqual(['59s', '1m00s', '1h0m'])
+    expect([shortModel('claude-fable-5-1'), shortModel('claude-haiku-4-5-20251001'), shortModel('')]).toEqual(['fable-5.1', 'haiku-4.5', ''])
+  })
+
+  test('tokens and dollars', () => {
+    expect([0, 499, 54_321, 999_499, 999_500, 1_940_000].map(tokens)).toEqual(['0k', '0k', '54k', '999k', '1.0M', '1.9M'])
+    expect([0, 6, 180, 1430].map(usd)).toEqual(['$0.00', '$0.06', '$1.80', '$14.30'])
+  })
+})

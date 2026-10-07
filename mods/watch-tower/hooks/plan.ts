@@ -1,5 +1,7 @@
 // Plan tracking, pure: parse a feature plan's To Do List, mark tasks done from
 // commit subjects, and say which paths the plan covers.
+import type { ToolCallInput } from 'claude-code'
+
 import type { Phase, Plan, Task } from '../types'
 
 const TODO_HEADING = /^## (?:\d+\.\s*)?To Do List\s*$/i
@@ -136,4 +138,12 @@ export function unplanned(plan: Plan, subjects: readonly string[]): string[] {
   const titles = plan.phases.flatMap(phase => phase.tasks.map(task => task.commit))
 
   return subjects.filter(subject => !titles.includes(subject))
+}
+
+/** The file a tool call edits; null for a tool that edits none. */
+export function editedPath(e: ToolCallInput): string | null {
+  if (e.tool === 'Edit' || e.tool === 'Write') return e.file_path
+  if (e.tool === 'NotebookEdit') return e.notebook_path
+
+  return null
 }

@@ -1,5 +1,5 @@
 MODS := $(notdir $(wildcard mods/*))
-MOD ?= buddy
+MOD ?= watch-tower
 
 .PHONY: check typecheck dev
 
