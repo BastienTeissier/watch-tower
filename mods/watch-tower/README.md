@@ -31,8 +31,10 @@ From top to bottom:
    its right the bars, lined up: `ctx` (context %), `5h` and `7d` (quotas),
    each green below 20%, white below 50%, yellow below 80%, red above; then
    the prompt cache countdown (`❄ cache 58:12`, TTL detected from the last
-   response or forced with `watch-tower.cacheTtl`). Under them, the
-   companion's message and `Tap`.
+   response or forced with `watch-tower.cacheTtl`); then, when
+   [chat-clean](https://github.com/achammah/claude-chat-clean) is loaded,
+   `chat clean normal raw`, the current view in brackets, a press running
+   `/feed <mode>`. Under them, the companion's message and `Tap`.
 2. **Agents**: `main` (the turn's thread) and its subagents as a tree, a child
    under its parent. A running agent takes three rows (label and time; model,
    `↑` input, `↓` output and `$` share of the session cost; current action), a

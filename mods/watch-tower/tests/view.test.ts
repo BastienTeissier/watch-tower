@@ -15,7 +15,7 @@ const NOW = 60_000
 const plan = parsePlan('docs/plan.md', PLAN_MD, 'base0')
 const done = parsePlan('docs/plan.md', PLAN_MD.replaceAll('- [ ]', '- [x]'), 'base0')
 const text = (row: Row) => `${'  '.repeat(row.indent)}${row.spans.map(span => span.text).join('')}`
-const seen = (extra: Partial<Seen> = {}): Seen => ({ books: BOOKS, track: TRACK, expanded: null, cache: COLD, ttl: null, warm: WARM_OFF, gauges: null, now: NOW, ...extra })
+const seen = (extra: Partial<Seen> = {}): Seen => ({ books: BOOKS, track: TRACK, expanded: null, cache: COLD, ttl: null, warm: WARM_OFF, chat: null, gauges: null, now: NOW, ...extra })
 const sections = (extra: Partial<Seen> = {}) => paneSections(seen(extra), '/watch-tower plan <path>').map(rows => rows.map(text))
 
 describe('paneSections', () => {
@@ -49,11 +49,17 @@ describe('headerRows', () => {
 
   test('the cache row ends with Keep warm, Let turn cold once on, and no button when cold', () => {
     const cache = { lastRequestAt: NOW, ttl: '5m' as const }
-    const actionAt = (extra: Partial<Seen>) => headerRows(seen({ cache, ...extra })).find(one => one.key === 'cache')?.action
+    const actionAt = (extra: Partial<Seen>) => headerRows(seen({ cache, ...extra })).find(one => one.key === 'cache')?.actions?.[0]
 
     expect(actionAt({})).toEqual({ key: KEEP_WARM, label: 'Keep warm' })
     expect(actionAt({ warm: { isOn: true, isPinging: false } })).toEqual({ key: KEEP_WARM, label: 'Let turn cold' })
     expect(actionAt({ now: NOW + 5 * 60_000 })).toBeUndefined()
+  })
+
+  test('chat-clean\'s modes come last, under the cache', () => {
+    const rows = headerRows(seen({ cache: { lastRequestAt: NOW, ttl: '5m' }, chat: 'raw' }))
+
+    expect(rows.map(one => one.key)).toEqual(['cache', 'chat'])
   })
 
   test('nothing measured, nothing shown', () => {

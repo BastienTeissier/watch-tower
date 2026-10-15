@@ -15,12 +15,12 @@ export type Press = { agentId: string }
 /**
  * One line of the pane: `indent` levels of two cells, then spans; `right`
  * stays visible at the end. A row with `press` is drawn with its first span
- * as a button; one with `action` ends with a button of that label.
+ * as a button; one with `actions` ends with a button for each.
  */
-export type Row = { key: string; indent: number; spans: Span[]; right?: string; press?: Press; action?: Action }
+export type Row = { key: string; indent: number; spans: Span[]; right?: string; press?: Press; actions?: Action[] }
 
-/** A button at a row's end: `key` names what it does. */
-export type Action = { key: string; label: string }
+/** A button at a row's end: `key` names what it does; `isOn` marks the one in force among several. */
+export type Action = { key: string; label: string; isOn?: boolean }
 
 const spent = (usage: Usage) => `↑${tokens(upTokens(usage))} ↓${tokens(usage.output)}`
 const cost = (cents: number | null | undefined) => (cents === null || cents === undefined ? null : usd(cents))

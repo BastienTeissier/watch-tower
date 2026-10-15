@@ -1,8 +1,9 @@
 // The pane and the band as rows, pure: from the session's state to what they
 // show. register.tsx reads the state, pane.tsx draws the rows; every way the
 // plan's position is written lives here.
-import type { Books, Cache, CacheTtl, Gauge, Gauges, Phase, Plan, Track, Warm } from '../types'
+import type { Books, Cache, CacheTtl, ChatMode, Gauge, Gauges, Phase, Plan, Track, Warm } from '../types'
 import { cachePart } from './cache'
+import { chatRow } from './chat'
 import { shares } from './ledger'
 import { position } from './plan'
 import { bandRow, commitRows, totalRows, treeRows } from './rows'
@@ -17,6 +18,7 @@ export type Seen = {
   cache: Cache
   ttl: CacheTtl | null
   warm: Warm
+  chat: ChatMode | null
   gauges: Gauges | null
   now: number
 }
@@ -68,17 +70,18 @@ function gaugeRow(label: string, gauge: Gauge | null, now: number, isStale: bool
 /** The button that keeps the cache warm, or lets it go cold. */
 export const KEEP_WARM = 'keep-warm'
 
-/** Beside the companion: the context bar, the quota bars, then the cache's countdown and, while warm, the keep-warm button. */
-export function headerRows({ books, cache, ttl, warm, gauges, now }: Seen): Row[] {
+/** Beside the companion: the context bar, the quota bars, then the cache's countdown and, while warm, the keep-warm button; then chat-clean's modes when it is loaded. */
+export function headerRows({ books, cache, ttl, warm, chat, gauges, now }: Seen): Row[] {
   const { contextPct } = books.ledger
   const part = cachePart(cache, ttl, now)
   const isStale = gauges !== null && now - gauges.sampledAt > GAUGE_STALE_MS
-  const keep = part === null || part.isCold ? {} : { action: { key: KEEP_WARM, label: warm.isOn ? 'Let turn cold' : 'Keep warm' } }
+  const keep = part === null || part.isCold ? {} : { actions: [{ key: KEEP_WARM, label: warm.isOn ? 'Let turn cold' : 'Keep warm' }] }
   const rows = [
     gaugeRow('ctx', contextPct === null ? null : { pct: contextPct, resetsAt: null }, now, false),
     gaugeRow('5h', gauges?.five ?? null, now, isStale),
     gaugeRow('7d', gauges?.week ?? null, now, isStale),
     part === null ? null : { ...row('cache', [{ text: part.text, color: part.color, isDim: part.isCold }]), ...keep },
+    chatRow(chat),
   ]
 
   return rows.filter(one => one !== null)

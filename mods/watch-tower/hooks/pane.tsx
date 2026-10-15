@@ -24,7 +24,8 @@ const spanText = (Text: Ui['Text'], span: Span, at: number) => (
 /**
  * One Row: the label truncates, the time on the right stays visible. A row
  * with `press` draws its first span as a plain button that calls `onPress`;
- * its `action` is a plain button at the end that calls `onAction`.
+ * its `actions` are plain buttons at the end that call `onAction`; the one
+ * `isOn` is drawn bold in brackets, the others dim when several.
  */
 export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: Press) => void, onAction?: (key: string) => void) {
   const { press } = row
@@ -42,9 +43,16 @@ export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: P
         </Text>
       </Box>
       {row.right !== undefined && <Text dimColor>{` ${row.right}`}</Text>}
-      {row.action !== undefined && onAction !== undefined && (
-        <Button key={row.action.key} plain label={` ${row.action.label}`} onPress={() => onAction(row.action?.key ?? '')} />
-      )}
+      {onAction !== undefined &&
+        row.actions?.map(action => (
+          <Button
+            key={action.key}
+            plain
+            label={action.isOn === true ? ` [${action.label}]` : ` ${action.label}`}
+            dimColor={action.isOn === false}
+            onPress={() => onAction(action.key)}
+          />
+        ))}
     </Box>
   )
 }

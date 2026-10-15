@@ -5,9 +5,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { CacheTtl, Gauge, Plan } from '../types'
+import type { CacheTtl, ChatMode, Gauge, Plan } from '../types'
 import { MAIN, describe, icon, label } from './agents'
 import { BOOKS, ended, measured, opened, prompted, requested, spawned, toolUsed } from './books'
+import { CHAT_MODES, chatKey, chatModeOf } from './chat'
 import { COLD, KEEP_WARM_TEXT, WARM_OFF, asTtl, ttlFromTranscript, warmStep } from './cache'
 import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machine'
@@ -39,6 +40,9 @@ const track = atom({ plugin: 'watch-tower', key: 'track' } as const, TRACK)
 const expanded = atom({ plugin: 'watch-tower', key: 'expanded' } as const, null as string | null)
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
 const warm = atom({ plugin: 'watch-tower', key: 'warm' } as const, WARM_OFF)
+const chat = atom({ plugin: 'watch-tower', key: 'chat' } as const, null as ChatMode | null)
+// chat-clean's settings: another plugin's value, read only.
+const CHAT_SETTINGS = { plugin: 'chat-clean', key: 'settings' } as const
 const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|revert|checkout|switch)\b/
 // How much of the transcript's end to read for the last response's cache usage.
 const TAIL_BYTES = 1024 * 1024
@@ -189,6 +193,8 @@ export const register: Register = (on, options) => {
   const species = speciesFor(String(options.species))
   const ttlOverride = asTtl(options.cacheTtl)
   let timer: Timer | undefined
+  // Whether chat-clean's /feed is listed; looked up each tick until it is.
+  let hasFeed = false
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -206,6 +212,12 @@ export const register: Register = (on, options) => {
       const now = await $.clock.now()
       await update($, tick, last => ({ frame: last.frame + 1, now }))
       await keepWarm($, now, ttlOverride)
+      hasFeed ||= (await $.command.list()).some(one => one.name === 'feed')
+      if (hasFeed) {
+        const { value } = await $.state.get(CHAT_SETTINGS as any)
+        const mode = chatModeOf(value)
+        if ((await read($, chat)) !== mode) await update($, chat, () => mode)
+      }
     })
     void $.ui.open({ id: PANE, title: TITLE })
     await restore($)
@@ -397,6 +409,7 @@ export const register: Register = (on, options) => {
       cache: await read($, cache),
       ttl: ttlOverride,
       warm: await read($, warm),
+      chat: await read($, chat),
       gauges: await read($, gauges),
       now,
     }
@@ -422,6 +435,8 @@ export const register: Register = (on, options) => {
           rule,
           onAction: key => {
             if (key === KEEP_WARM) void update($, warm, last => ({ ...last, isOn: !last.isOn }))
+            const mode = CHAT_MODES.find(one => chatKey(one) === key)
+            if (mode !== undefined) void $.command.run({ command: 'feed', args: mode })
           },
         })}
         {sectionLines(ui, paneSections(seen, `/${NAME} plan <path>`), rule, toggle)}

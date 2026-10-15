@@ -166,6 +166,36 @@ describe('watch-tower pane', () => {
     await ui.unmount()
   })
 
+  test('with chat-clean loaded, its modes show and a press runs /feed with that mode', async ($, on) => {
+    const clock = engine(on)
+    const ran: string[] = []
+    on('command.list', () => ({ value: [{ name: 'feed' }] }) as any)
+    on('command.run', { command: 'feed' }, ($, e) => {
+      ran.push(e.args)
+
+      return { text: '' }
+    })
+    await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })
+    await clock.advance(500)
+
+    const ui = await $.ui.mount(pane('terminal'))
+    expect((await ui.find({ type: 'Button', key: 'chat:clean' }))?.text).toBe(' [clean]')
+    await ui.press({ key: 'chat:raw' })
+    expect(ran).toEqual(['raw'])
+    await ui.unmount()
+  })
+
+  test('without chat-clean, no chat modes', async ($, on) => {
+    const clock = engine(on)
+    on('command.list', () => ({ value: [] }) as any)
+    await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })
+    await clock.advance(500)
+
+    const ui = await $.ui.mount(pane('terminal'))
+    expect(await ui.find({ type: 'Button', key: 'chat:clean' })).toBeUndefined()
+    await ui.unmount()
+  })
+
   test('a permission request puts the Buddy in WAITING', async ($, on) => {
     engine(on)
     await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })
