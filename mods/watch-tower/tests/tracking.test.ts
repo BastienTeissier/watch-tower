@@ -32,6 +32,8 @@ type World = {
   answer: string
   asked: string[]
   opened: { id: string; title?: string }[]
+  /** The prompts submitted, the mod's own among them. */
+  prompts: string[]
 }
 
 /** The hash of the commit at `at` in the log; `base0` stands before the first one. */
@@ -112,7 +114,11 @@ function engine(on: On, world: World, stored: Record<string, string> = {}) {
 
     return { result: '', text: '' } as any
   })
-  on('prompt.submit', ($, e) => ({ text: e.text }) as any)
+  on('prompt.submit', ($, e) => {
+    world.prompts.push(e.text)
+
+    return { text: e.text } as any
+  })
   on('turn.complete', ($, e) => ({ text: e.answer ?? '' }) as any)
   mock.store(on, stored)
   mock.env(on, { HOME: '/home/me' })
@@ -147,7 +153,7 @@ const BAND = {
   props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { bodyRows: 4 } },
 } as any
 
-const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, isUnborn: false, isNarrow: false, runs: [], answer: 'Deny', asked: [], opened: [] })
+const world = (): World => ({ files: { [PLAN]: PLAN_MD }, subjects: [], isRepo: true, isUnborn: false, isNarrow: false, runs: [], answer: 'Deny', asked: [], opened: [], prompts: [] })
 
 describe('plan tracking', () => {
   test('/watch-tower opens the Watch Tower pane', async ($, on) => {
@@ -197,7 +203,7 @@ describe('plan tracking', () => {
     await ui.unmount()
   })
 
-  test('drift sits under the plan block, above the context line', async ($, on) => {
+  test('drift sits under the plan block; the context bar heads the pane', async ($, on) => {
     const repo = world()
     engine(on, repo)
     on('session.measure', ($, e) => ({ changed: e.changed }))
@@ -211,7 +217,8 @@ describe('plan tracking', () => {
     const texts: string[] = (await ui.findAll({ type: 'Text' })).map((one: any) => one.text)
     const at = (pattern: RegExp) => texts.findIndex(text => pattern.test(text))
     expect(at(/^drift: 0 files, 1 commits$/)).toBeGreaterThan(at(/^ {2}next: Wire URLs/))
-    expect(at(/^drift:/)).toBeLessThan(at(/^ctx 42%/))
+    expect(at(/^ctx ████░░░░░░ 42%$/)).toBeGreaterThanOrEqual(0)
+    expect(at(/^ctx /)).toBeLessThan(at(/^drift:/))
     await ui.unmount()
   })
 
@@ -383,8 +390,9 @@ describe('plan tracking', () => {
     expect(await ui.find({ type: 'Text', text: /Σ turn .* 1 agent  ↑108k ↓16k  \$1\.00/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Σ session .* 1 agent  1 tool/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /↑108k ↓16k  cache 63%  \$1\.00/ })).toBeDefined()
-    // The context fill sits with the cache countdown; the old vitals line is gone.
-    expect(await ui.find({ type: 'Text', text: /^ctx 42%  ❄ cache 5:00$/ })).toBeDefined()
+    // The context is a bar, the cache countdown its own row under the bars; the old vitals line is gone.
+    expect(await ui.find({ type: 'Text', text: /^ctx ████░░░░░░ 42%$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^❄ cache 5:00$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /tools 1|turn \d/ })).toBeUndefined()
 
     await $.prompt.submit({ text: 'next' } as any)
@@ -519,6 +527,73 @@ describe('plan tracking', () => {
 
     const ui = await $.ui.mount(pane)
     expect(await ui.find({ type: 'Text', text: /uncommitted/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('keep warm pings the model under a minute before cold, unseen by the tree, until let go cold', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    on('turn.step', async function* ($, e) {
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: { ...USAGE, model: e.model } } as any
+    })
+    const ping = 'No action required, message only to keep cache warm'
+    const pings = () => repo.prompts.filter(text => text === ping).length
+    const button = async (ui: any) => (await ui.find({ type: 'Button', key: 'keep-warm' }))?.text
+    await start($)
+    await $.prompt.submit({ text: 'go' } as any)
+    await step($, 'claude-opus-5-5')
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'ok', usage: null } as any)
+
+    const ui = await $.ui.mount(pane)
+    await clock.advance(500)
+    expect(await button(ui)).toBe(' Keep warm')
+    await ui.press({ key: 'keep-warm' })
+    expect(await button(ui)).toBe(' Let turn cold')
+
+    await clock.advance(3 * 60_000)
+    expect(pings()).toBe(0)
+    await clock.advance(60_000)
+    expect(pings()).toBe(1)
+    await clock.advance(10_000)
+    expect(pings()).toBe(1)
+
+    // The ping's turn warms the cache again and ends without touching the person's run.
+    await step($, 'claude-opus-5-5')
+    await $.turn.complete({ turnId: 't2', reason: 'answer', answer: 'ok', usage: null } as any)
+    expect(await mark(ui, 'main')).toBe('✓')
+    expect(await ui.find({ type: 'Text', text: /^❄ cache 5:00$/ })).toBeDefined()
+    await clock.advance(4 * 60_000 + 10_000)
+    expect(pings()).toBe(2)
+
+    // Let go: the pending ping ends, then no more, and the cache goes cold.
+    await step($, 'claude-opus-5-5')
+    await $.turn.complete({ turnId: 't3', reason: 'answer', answer: 'ok', usage: null } as any)
+    await ui.press({ key: 'keep-warm' })
+    expect(await button(ui)).toBe(' Keep warm')
+    await clock.advance(5 * 60_000)
+    expect(pings()).toBe(2)
+    expect(await button(ui)).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('keep warm turns itself off when the cache goes cold anyway', async ($, on) => {
+    const repo = world()
+    const clock = engine(on, repo)
+    on('turn.step', async function* ($, e) {
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: { ...USAGE, model: e.model } } as any
+    })
+    await start($)
+    await $.prompt.submit({ text: 'go' } as any)
+    await step($, 'claude-opus-5-5')
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'ok', usage: null } as any)
+
+    const ui = await $.ui.mount(pane)
+    await ui.press({ key: 'keep-warm' })
+    // The ping never gets its request: the cache goes cold and keep warm with it.
+    await clock.advance(5 * 60_000)
+    await step($, 'claude-opus-5-5')
+    await clock.advance(500)
+    expect((await ui.find({ type: 'Button', key: 'keep-warm' }))?.text).toBe(' Keep warm')
     await ui.unmount()
   })
 })

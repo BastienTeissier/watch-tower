@@ -6,7 +6,7 @@ the session's commits, the attached plan's position, context, quotas and the
 prompt cache countdown, with a guard on off-plan edits. Plugin name is
 `watch-tower` (a temporary name; `claude-*` names are reserved by Claude Code).
 
-An optional ASCII companion rides along at the bottom: the Buddy, mimicking
+An optional ASCII companion sits at the top left: the Buddy, mimicking
 the ESP32 Buddy ([claude-ble-buddy](https://github.com/BastienTeissier/claude-ble-buddy))
 with no Bridge, no BLE and no hardware.
 
@@ -26,21 +26,31 @@ a restart.
 
 From top to bottom:
 
-1. **Agents**: `main` (the turn's thread) and its subagents as a tree, a child
+1. **Header**: the companion (when on) on the left, its state and sprite,
+   with `◀ ▶` under it to switch Species (saved to `/config`); on
+   its right the bars, lined up: `ctx` (context %), `5h` and `7d` (quotas),
+   each green below 20%, white below 50%, yellow below 80%, red above; then
+   the prompt cache countdown (`❄ cache 58:12`, TTL detected from the last
+   response or forced with `watch-tower.cacheTtl`). Under them, the
+   companion's message and `Tap`.
+2. **Agents**: `main` (the turn's thread) and its subagents as a tree, a child
    under its parent. A running agent takes three rows (label and time; model,
    `↑` input, `↓` output and `$` share of the session cost; current action), a
    finished one a single row (`✓` done, `✗` failed with why). Finished agents
    stay until the next prompt; background ones stay while they run. Then
    `Σ turn` and `Σ session` (time, agents, tools, tokens, cache hit rate,
    cost). The rows' costs sum to `Σ turn`, and `Σ session` matches `/cost`.
-2. **Commits**: the session's commits, newest first (hash, subject, files
+3. **Commits**: the session's commits, newest first (hash, subject, files
    `+added −removed`), `✓` when the plan names the subject, `!` when it does
    not; `+N earlier` past five; then the branch and its uncommitted count.
-3. **Plan**: phase, task X/Y, the next task, and drift.
-4. **Context and quotas**: context %, the prompt cache countdown (`❄ cache
-   58:12`, TTL detected from the last response or forced with
-   `watch-tower.cacheTtl`), the 5h and 7d gauges.
-5. **Companion** (when on): its state, sprite, message and `Tap`.
+4. **Plan**: phase, task X/Y, the next task, and drift.
+
+**Keep the cache warm**: while the cache is warm, `Keep warm` sits right of
+its countdown. Pressed, it reads `Let turn cold`, and each time less than a
+minute is left the mod sends the model `No action required, message only to
+keep cache warm` once the main thread is idle. That ping's turn stays out of
+the tree and `Σ turn`; its tokens still count in `Σ session`. It stops when
+pressed again or when the cache goes cold anyway.
 
 **Expand an agent**: focus its status mark (ctrl+x tab into the pane, then Tab
 or the arrows) and press Enter, or click it. The mark becomes `▾` and the

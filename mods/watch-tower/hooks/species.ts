@@ -507,6 +507,14 @@ export const SPECIES = {
   },
 } satisfies Record<string, Species>
 
+/** The Species `by` steps from `name` in the list, wrapping at both ends; an unknown name counts as snail. */
+export function shiftSpecies(name: string, by: 1 | -1): string {
+  const names = Object.keys(SPECIES)
+  const at = Math.max(0, names.indexOf(name))
+
+  return names[(at + by + names.length) % names.length] ?? 'snail'
+}
+
 /** The Species named `name`, or the default (snail) for an unknown name. */
 export function speciesFor(name: string): Species {
   return (SPECIES as Record<string, Species>)[name] ?? SPECIES.snail

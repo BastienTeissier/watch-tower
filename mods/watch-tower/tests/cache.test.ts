@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { cachePart, ttlFromTranscript } from '../hooks/cache'
+import { WARM_OFF, cachePart, ttlFromTranscript, warmStep } from '../hooks/cache'
 
 const row = (usage: unknown, extra = {}) => JSON.stringify({ type: 'assistant', message: { usage }, ...extra })
 
@@ -34,5 +34,24 @@ describe('cachePart', () => {
       color: '#ff3232',
       isCold: true,
     })
+  })
+})
+
+describe('warmStep', () => {
+  const cache = { lastRequestAt: 0, ttl: '5m' as const }
+  const ON = { isOn: true, isPinging: false }
+  const late = 4 * 60_000 + 30_000
+
+  test('pings once under a minute is left, idle and with no ping waiting', () => {
+    expect(warmStep(ON, cache, null, late, false)).toEqual({ warm: { isOn: true, isPinging: true }, shouldPing: true })
+    expect(warmStep(ON, cache, null, 3 * 60_000, false).shouldPing).toBe(false)
+    expect(warmStep({ isOn: true, isPinging: true }, cache, null, late, false).shouldPing).toBe(false)
+    expect(warmStep(ON, cache, null, late, true).shouldPing).toBe(false)
+  })
+
+  test('off does nothing; a cold cache turns it off and keeps a waiting ping known', () => {
+    expect(warmStep(WARM_OFF, cache, null, late, false)).toEqual({ warm: WARM_OFF, shouldPing: false })
+    expect(warmStep({ isOn: true, isPinging: true }, cache, null, 5 * 60_000, false)).toEqual({ warm: { isOn: false, isPinging: true }, shouldPing: false })
+    expect(warmStep(ON, { lastRequestAt: null, ttl: null }, null, late, false).warm.isOn).toBe(false)
   })
 })

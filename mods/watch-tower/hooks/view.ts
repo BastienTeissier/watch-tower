@@ -1,7 +1,7 @@
 // The pane and the band as rows, pure: from the session's state to what they
 // show. register.tsx reads the state, pane.tsx draws the rows; every way the
 // plan's position is written lives here.
-import type { Books, Cache, CacheTtl, Gauge, Gauges, Phase, Plan, Track } from '../types'
+import type { Books, Cache, CacheTtl, Gauge, Gauges, Phase, Plan, Track, Warm } from '../types'
 import { cachePart } from './cache'
 import { shares } from './ledger'
 import { position } from './plan'
@@ -16,6 +16,7 @@ export type Seen = {
   expanded: string | null
   cache: Cache
   ttl: CacheTtl | null
+  warm: Warm
   gauges: Gauges | null
   now: number
 }
@@ -51,41 +52,41 @@ function planRows({ plan, drift }: Track, hint: string): Row[] {
   return [head, ...now, ...next, ...left]
 }
 
-/** One quota gauge, dimmed when its sample is stale; null when unknown. */
+/** One bar, its label padded so the bars line up, dimmed when its sample is stale; null when unknown. */
 function gaugeRow(label: string, gauge: Gauge | null, now: number, isStale: boolean): Row | null {
   if (gauge === null) return null
   const resets = gauge.resetsAt === null ? [] : [{ text: ` in ${countdown(Math.floor((gauge.resetsAt - now) / 1000))}`, isDim: true }]
 
   return row(`gauge:${label}`, [
-    { text: `${label} `, isDim: true },
+    { text: `${label.padEnd(3)} `, isDim: true },
     { text: gaugeBar(gauge.pct), color: gaugeColor(gauge.pct), isDim: isStale },
     { text: ` ${gauge.pct}%`, isDim: isStale },
     ...resets,
   ])
 }
 
-/** The context and the cache's countdown on one row, then the quota gauges. */
-function statusRows({ books, cache, ttl, gauges, now }: Seen): Row[] {
+/** The button that keeps the cache warm, or lets it go cold. */
+export const KEEP_WARM = 'keep-warm'
+
+/** Beside the companion: the context bar, the quota bars, then the cache's countdown and, while warm, the keep-warm button. */
+export function headerRows({ books, cache, ttl, warm, gauges, now }: Seen): Row[] {
   const { contextPct } = books.ledger
-  const warm = cachePart(cache, ttl, now)
-  const spans: Span[] = [
-    ...(contextPct === null ? [] : [{ text: `ctx ${contextPct}%  `, isDim: true }]),
-    ...(warm === null ? [] : [{ text: warm.text, color: warm.color, isDim: warm.isCold }]),
-  ]
+  const part = cachePart(cache, ttl, now)
   const isStale = gauges !== null && now - gauges.sampledAt > GAUGE_STALE_MS
+  const keep = part === null || part.isCold ? {} : { action: { key: KEEP_WARM, label: warm.isOn ? 'Let turn cold' : 'Keep warm' } }
   const rows = [
-    spans.length === 0 ? null : row('ctx', spans),
+    gaugeRow('ctx', contextPct === null ? null : { pct: contextPct, resetsAt: null }, now, false),
     gaugeRow('5h', gauges?.five ?? null, now, isStale),
     gaugeRow('7d', gauges?.week ?? null, now, isStale),
+    part === null ? null : { ...row('cache', [{ text: part.text, color: part.color, isDim: part.isCold }]), ...keep },
   ]
 
   return rows.filter(one => one !== null)
 }
 
 /**
- * The pane above the companion, in sections: the agent tree and its totals,
- * the commits, the plan and its drift, the context and quotas. `hint` is the
- * command that attaches a plan.
+ * The pane under its header, in sections: the agent tree and its totals, the
+ * commits, the plan and its drift. `hint` is the command that attaches a plan.
  */
 export function paneSections(seen: Seen, hint: string): Row[][] {
   const { books: { agents, ledger }, track, expanded, now } = seen
@@ -95,7 +96,6 @@ export function paneSections(seen: Seen, hint: string): Row[][] {
     [...treeRows(agents, { now, shares: cents, expanded }), ...totalRows(agents, ledger, { now, shares: cents })],
     commitRows(track),
     planRows(track, hint),
-    statusRows(seen),
   ]
 }
 

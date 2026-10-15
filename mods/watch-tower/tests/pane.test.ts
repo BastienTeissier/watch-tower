@@ -123,7 +123,7 @@ describe('watch-tower pane', () => {
     }
   })
 
-  test('the pane reads agents, commits, plan, context and quotas, then the companion last', async ($, on) => {
+  test('the pane heads with the companion and its bars on the right, then agents, commits and plan', async ($, on) => {
     engine(on)
     mock.store(on)
     on('session.cwd', () => ({ value: '/work' }) as any)
@@ -138,29 +138,32 @@ describe('watch-tower pane', () => {
 
     for (const surface of SURFACES) {
       const { at } = await turnPane($, surface)
-      expect(at(/^ main$/)).toBeGreaterThanOrEqual(0)
+      expect(at(/^THINKING$/)).toBe(0)
+      expect(at(/^THINKING$/)).toBeLessThan(at(/~~~~~~/))
+      expect(at(/~~~~~~/)).toBeLessThan(at(/^ctx █░+ 12%$/))
+      expect(at(/^ctx /)).toBeLessThan(at(/^5h  ████░░░░░░ 42%$/))
+      expect(at(/^5h /)).toBeLessThan(at(/^ main$/))
       expect(at(/^ main$/)).toBeLessThan(at(/abc1234 feat: add x/))
       expect(at(/abc1234 feat: add x/)).toBeLessThan(at(/^no plan/))
-      expect(at(/^no plan/)).toBeLessThan(at(/ctx 12%/))
-      expect(at(/ctx 12%/)).toBeLessThan(at(/5h/))
-      expect(at(/5h/)).toBeLessThan(at(/^THINKING$/))
-      expect(at(/^THINKING$/)).toBeLessThan(at(/~~~~~~/))
     }
   })
 
-  test('with the companion off, no state, sprite, message or Tap; the rest stays in order', { options: { companion: false } }, async ($, on) => {
+  test('with the companion off, no state, sprite, message or Tap; the bars head the pane alone', { options: { companion: false } }, async ($, on) => {
     engine(on)
 
     for (const surface of SURFACES) {
       await $.classic.Notification({ message: 'Claude is idle', notification_type: 'idle_prompt' })
       const { at, hasTap } = await turnPane($, surface)
-      expect(at(/^ main$/)).toBe(1)
+      expect(at(/^ctx █░+ 12%$/)).toBe(0)
+      expect(at(/^ctx /)).toBeLessThan(at(/^5h /))
+      expect(at(/^5h /)).toBeLessThan(at(/^ main$/))
       expect(at(/^ main$/)).toBeLessThan(at(/^no plan/))
-      expect(at(/^no plan/)).toBeLessThan(at(/ctx 12%/))
-      expect(at(/ctx 12%/)).toBeLessThan(at(/5h/))
       for (const gone of [/ALERT|THINKING/, /Claude is idle/, /~~~~~~/]) expect(at(gone)).toBe(-1)
       expect(hasTap).toBe(false)
     }
+    const ui = await $.ui.mount(pane('terminal'))
+    expect(await ui.find({ type: 'Button', key: 'species-next' })).toBeUndefined()
+    await ui.unmount()
   })
 
   test('a permission request puts the Buddy in WAITING', async ($, on) => {
@@ -180,6 +183,26 @@ describe('watch-tower pane', () => {
     const ui = await $.ui.mount(pane('terminal'))
     expect(await ui.find({ type: 'Text', text: /IDLE/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: />/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('the arrows under the sprite save the next or previous Species to /config', { options: { species: 'duck' } }, async ($, on) => {
+    engine(on)
+    const saved: unknown[] = []
+    on('config.set', ($, e) => {
+      saved.push([e.key, e.value])
+
+      return { value: e.value } as any
+    })
+    await $.session.start({ surface: 'terminal', cwd: '/work', isInteractive: true })
+
+    const ui = await $.ui.mount(pane('terminal'))
+    await ui.press({ key: 'species-next' })
+    await ui.press({ key: 'species-prev' })
+    expect(saved).toEqual([
+      ['watch-tower.species', 'goose'],
+      ['watch-tower.species', 'snail'],
+    ])
     await ui.unmount()
   })
 

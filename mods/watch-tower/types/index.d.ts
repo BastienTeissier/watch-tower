@@ -88,6 +88,9 @@ export type CacheTtl = '5m' | '1h'
 /** The prompt cache's clock: when the main thread's last request ended, and the lifetime it wrote with. */
 export type Cache = { lastRequestAt: number | null; ttl: CacheTtl | null }
 
+/** Keep warm: whether it is on, and whether a ping was sent and its turn has not ended. */
+export type Warm = { isOn: boolean; isPinging: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'watch-tower': {
@@ -99,6 +102,7 @@ declare module 'claude-code' {
       /** The agent whose details are open in the tree, null when none. */
       expanded: string | null
       cache: Cache
+      warm: Warm
     }
   }
 }
