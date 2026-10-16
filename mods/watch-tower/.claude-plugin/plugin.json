@@ -8,7 +8,7 @@
     "companion": {
       "type": "boolean",
       "title": "Companion",
-      "description": "Show the ASCII companion at the bottom of the pane",
+      "description": "Show the ASCII companion at the top left of the pane",
       "default": true
     },
     "species": {

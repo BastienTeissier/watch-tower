@@ -5,22 +5,23 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
-import type { Gauge, Plan } from '../types'
+import type { CacheTtl, ChatMode, Gauge, Plan } from '../types'
 import { MAIN, describe, icon, label } from './agents'
 import { BOOKS, ended, measured, opened, prompted, requested, spawned, toolUsed } from './books'
-import { COLD, asTtl, ttlFromTranscript } from './cache'
+import { CHAT_MODES, chatKey, chatModeOf } from './chat'
+import { COLD, KEEP_WARM_TEXT, WARM_OFF, asTtl, ttlFromTranscript, warmStep } from './cache'
 import { MAX_COMMITS, parseLog } from './commits'
 import { INITIAL, clearAlert, isAlert, mapEvent, push, toolEvent } from './machine'
 import type { BuddyEvent } from './machine'
 import { usageOf } from './ledger'
-import { companionLines, rowLine, sectionLines } from './pane'
+import { headerLines, rowLine, sectionLines } from './pane'
 import { editedPath, parsePlan, position, relativeTo, tickCommits } from './plan'
 import { weightOf } from './pricing'
 import type { Press } from './rows'
-import { speciesFor } from './species'
+import { shiftSpecies, speciesFor } from './species'
 import { styleFor } from './style'
 import { TRACK, attached, began, detached, edited, holds, observed } from './track'
-import { bandRows, paneSections, positionText } from './view'
+import { KEEP_WARM, bandRows, headerRows, paneSections, positionText } from './view'
 
 // The mod's name: pane, command and message prefix. The atoms below repeat it
 // literally: the validator reads a state reference only from string literals.
@@ -38,6 +39,10 @@ const books = atom({ plugin: 'watch-tower', key: 'books' } as const, BOOKS)
 const track = atom({ plugin: 'watch-tower', key: 'track' } as const, TRACK)
 const expanded = atom({ plugin: 'watch-tower', key: 'expanded' } as const, null as string | null)
 const cache = atom({ plugin: 'watch-tower', key: 'cache' } as const, COLD)
+const warm = atom({ plugin: 'watch-tower', key: 'warm' } as const, WARM_OFF)
+const chat = atom({ plugin: 'watch-tower', key: 'chat' } as const, null as ChatMode | null)
+// chat-clean's settings: another plugin's value, read only.
+const CHAT_SETTINGS = { plugin: 'chat-clean', key: 'settings' } as const
 const HISTORY_COMMANDS = /\bgit\b.*\b(commit|merge|rebase|cherry-pick|reset|revert|checkout|switch)\b/
 // How much of the transcript's end to read for the last response's cache usage.
 const TAIL_BYTES = 1024 * 1024
@@ -171,11 +176,25 @@ async function guard($: EngineInterface, e: ToolCallInput): Promise<string | und
   return undefined
 }
 
+/**
+ * Keep warm, on each tick: pings the model when the cache has under a minute
+ * left and the main thread is idle, and turns off once the cache is cold.
+ */
+async function keepWarm($: EngineInterface, now: number, ttl: CacheTtl | null) {
+  const { agents } = await read($, books)
+  const isBusy = agents.some(one => one.id === MAIN && one.status === 'running')
+  const step = warmStep(await read($, warm), await read($, cache), ttl, now, isBusy)
+  await update($, warm, () => step.warm)
+  if (step.shouldPing) void $.prompt.submit({ text: KEEP_WARM_TEXT })
+}
+
 export const register: Register = (on, options) => {
   const hasCompanion = options.companion !== false
   const species = speciesFor(String(options.species))
   const ttlOverride = asTtl(options.cacheTtl)
   let timer: Timer | undefined
+  // Whether chat-clean's /feed is listed; looked up each tick until it is.
+  let hasFeed = false
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -192,6 +211,13 @@ export const register: Register = (on, options) => {
     timer = $.clock.every(FRAME_MS, async () => {
       const now = await $.clock.now()
       await update($, tick, last => ({ frame: last.frame + 1, now }))
+      await keepWarm($, now, ttlOverride)
+      hasFeed ||= (await $.command.list()).some(one => one.name === 'feed')
+      if (hasFeed) {
+        const { value } = await $.state.get(CHAT_SETTINGS as any)
+        const mode = chatModeOf(value)
+        if ((await read($, chat)) !== mode) await update($, chat, () => mode)
+      }
     })
     void $.ui.open({ id: PANE, title: TITLE })
     await restore($)
@@ -202,7 +228,10 @@ export const register: Register = (on, options) => {
 
   on('session.end', async ($, e, next) => {
     await emit($, { kind: 'session' })
-    if (e.reason === 'clear' || e.reason === 'resume') await update($, cache, last => ({ ...last, lastRequestAt: null }))
+    if (e.reason === 'clear' || e.reason === 'resume') {
+      await update($, cache, last => ({ ...last, lastRequestAt: null }))
+      await update($, warm, () => WARM_OFF)
+    }
 
     return next(e)
   })
@@ -229,6 +258,7 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (e.origin?.kind === 'plugin' && e.text === KEEP_WARM_TEXT) return next(e)
     await emit($, { kind: 'prompt' })
     const now = await $.clock.now()
     const { agents } = await update($, books, last => prompted(last, e.text, now))
@@ -293,6 +323,12 @@ export const register: Register = (on, options) => {
   on('turn.complete', async ($, e, next) => {
     const now = await $.clock.now()
     const isFailed = e.reason === 'error' || e.reason === 'aborted'
+    // A keep-warm ping's turn ends unseen: the run it would end is the person's last one.
+    if (e.agentId === undefined && (await read($, warm)).isPinging) {
+      await update($, warm, last => ({ ...last, isPinging: false }))
+
+      return next(e)
+    }
     if (e.agentId === undefined) {
       await update($, books, last => ended(last, MAIN, isFailed, now, e.reason))
       await emit($, { kind: 'stop' })
@@ -372,6 +408,8 @@ export const register: Register = (on, options) => {
       expanded: await read($, expanded),
       cache: await read($, cache),
       ttl: ttlOverride,
+      warm: await read($, warm),
+      chat: await read($, chat),
       gauges: await read($, gauges),
       now,
     }
@@ -381,16 +419,27 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" paddingX={1}>
+        {headerLines(ui, {
+          companion: hasCompanion
+            ? {
+                species,
+                style: styleFor(status.code),
+                frame,
+                message: status.msg,
+                onTap: isAlert(status.code) ? () => void update($, machine, clearAlert) : undefined,
+                // Saved to /config, which reloads the mod with the new Species.
+                onShift: by => void $.config.set({ key: `${NAME}.species`, value: shiftSpecies(String(options.species), by) }),
+              }
+            : null,
+          rows: headerRows(seen),
+          rule,
+          onAction: key => {
+            if (key === KEEP_WARM) void update($, warm, last => ({ ...last, isOn: !last.isOn }))
+            const mode = CHAT_MODES.find(one => chatKey(one) === key)
+            if (mode !== undefined) void $.command.run({ command: 'feed', args: mode })
+          },
+        })}
         {sectionLines(ui, paneSections(seen, `/${NAME} plan <path>`), rule, toggle)}
-        {hasCompanion &&
-          companionLines(ui, {
-            species,
-            style: styleFor(status.code),
-            frame,
-            message: status.msg,
-            rule,
-            onTap: isAlert(status.code) ? () => void update($, machine, clearAlert) : undefined,
-          })}
       </Box>
     )
   })

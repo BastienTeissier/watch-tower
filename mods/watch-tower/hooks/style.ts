@@ -41,11 +41,13 @@ export function eyeGlyph(style: Style, frame: number): string {
   return (style.isEyeCycling ? EYE_CYCLE[frame % EYE_CYCLE.length] : undefined) ?? style.eye
 }
 
+/** A bar's colour by fill: green below 20%, white below 50%, yellow below 80%, red above. */
 export function gaugeColor(pct: number): string {
-  if (pct >= 90) return '#ff3c3c'
-  if (pct >= 70) return '#f0dc3c'
+  if (pct < 20) return '#32c850'
+  if (pct < 50) return '#ffffff'
+  if (pct < 80) return '#f0dc3c'
 
-  return '#32c850'
+  return '#ff3c3c'
 }
 
 export function gaugeBar(pct: number, width = 10): string {

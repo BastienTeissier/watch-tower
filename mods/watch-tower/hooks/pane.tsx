@@ -23,9 +23,11 @@ const spanText = (Text: Ui['Text'], span: Span, at: number) => (
 
 /**
  * One Row: the label truncates, the time on the right stays visible. A row
- * with `press` draws its first span as a plain button that calls `onPress`.
+ * with `press` draws its first span as a plain button that calls `onPress`;
+ * its `actions` are plain buttons at the end that call `onAction`; the one
+ * `isOn` is drawn bold in brackets, the others dim when several.
  */
-export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: Press) => void) {
+export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: Press) => void, onAction?: (key: string) => void) {
   const { press } = row
   const [first, ...rest] = row.spans
   const isButton = press !== undefined && onPress !== undefined && first !== undefined
@@ -41,6 +43,16 @@ export function rowLine({ Box, Button, Text }: Ui, row: Row, onPress?: (press: P
         </Text>
       </Box>
       {row.right !== undefined && <Text dimColor>{` ${row.right}`}</Text>}
+      {onAction !== undefined &&
+        row.actions?.map(action => (
+          <Button
+            key={action.key}
+            plain
+            label={action.isOn === true ? ` [${action.label}]` : ` ${action.label}`}
+            dimColor={action.isOn === false}
+            onPress={() => onAction(action.key)}
+          />
+        ))}
     </Box>
   )
 }
@@ -78,30 +90,69 @@ function rowRuns(species: Species, style: Style, frame: number, row: number): Ru
   return runs
 }
 
-/** The companion, last in the pane: its state, sprite and message, and `Tap` while it alerts (`onTap` set). */
-export function companionLines(
-  { Box, Button, Text }: Ui,
-  { species, style, frame, message, rule, onTap }: { species: Species; style: Style; frame: number; message: string; rule: string; onTap?: () => void },
+export type Companion = {
+  species: Species
+  style: Style
+  frame: number
+  message: string
+  onTap?: (() => void) | undefined
+  onShift: (by: 1 | -1) => void
+}
+
+/**
+ * The pane's head: the companion's state, sprite and `◀ ▶` (calling `onShift`)
+ * on the left, `rows` on its
+ * right, then its message and `Tap` while it alerts (`onTap` set); `rows` alone
+ * without a companion. `rule` closes it; a row's button calls `onAction`.
+ */
+export function headerLines(
+  ui: Ui,
+  { companion, rows, rule, onAction }: { companion: Companion | null; rows: Row[]; rule: string; onAction: (key: string) => void },
 ) {
+  const { Box, Button, Text } = ui
+  const lines = rows.map(row => rowLine(ui, row, undefined, onAction))
+  if (companion === null) {
+    return (
+      <Box flexDirection="column">
+        {lines}
+        {lines.length > 0 && <Text dimColor>{rule}</Text>}
+      </Box>
+    )
+  }
+
+  const { species, style, frame, message, onTap, onShift } = companion
   const isDimmedPulse = style.isPulsing && frame % 2 === 1
 
   return (
     <Box flexDirection="column">
-      <Text dimColor>{rule}</Text>
-      <Text bold color={style.shell}>
-        {style.name}
-      </Text>
-      {Array.from({ length: FRAME_H }, (_, row) => (
-        <Box>
-          {rowRuns(species, style, frame, row).map(run => (
-            <Text color={run.color} bold dimColor={run.isShell && isDimmedPulse}>
-              {run.text}
-            </Text>
+      <Box>
+        <Box flexDirection="column" width={FRAME_W} flexShrink={0} marginRight={2}>
+          <Text bold color={style.shell}>
+            {style.name}
+          </Text>
+          {Array.from({ length: FRAME_H }, (_, row) => (
+            <Box>
+              {rowRuns(species, style, frame, row).map(run => (
+                <Text color={run.color} bold dimColor={run.isShell && isDimmedPulse}>
+                  {run.text}
+                </Text>
+              ))}
+            </Box>
           ))}
         </Box>
-      ))}
+        <Box flexDirection="column" flexGrow={1}>
+          {lines}
+        </Box>
+      </Box>
+      {/* Outside the sprite's fixed width, so a wider desktop button is not clipped. */}
+      <Box flexShrink={0}>
+        <Button key="species-prev" plain label="◀" onPress={() => onShift(-1)} />
+        <Text> </Text>
+        <Button key="species-next" plain label="▶" onPress={() => onShift(1)} />
+      </Box>
       <Text wrap="wrap">{message === '' ? ' ' : message}</Text>
       {onTap !== undefined && <Button key="tap" label="Tap" hotkey="t" onPress={onTap} />}
+      <Text dimColor>{rule}</Text>
     </Box>
   )
 }
